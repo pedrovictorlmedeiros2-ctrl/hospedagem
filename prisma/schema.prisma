@@ -1,0 +1,781 @@
+// Football Game — core relational schema (Phase 0/1 foundation).
+// Design notes live in docs/DATABASE.md. This models the minimum entity set
+// required by the product spec; gameplay-heavy subsystems (full match engine
+// state, AI weights) are intentionally NOT persisted here — those live in
+// the match runtime and only their *results* land in this schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Position {
+  GK
+  CB
+  LB
+  RB
+  DM
+  CM
+  AM
+  LM
+  RM
+  LW
+  RW
+  ST
+}
+
+enum PreferredFoot {
+  LEFT
+  RIGHT
+  BOTH
+}
+
+enum PlayStyle {
+  BALANCED
+  POACHER
+  PLAYMAKER
+  ENGINE
+  DEFENSIVE
+  WINGER
+  TARGET_MAN
+  SWEEPER_KEEPER
+  SHOT_STOPPER
+}
+
+enum CareerStage {
+  BASE
+  RESERVE
+  PROFESSIONAL
+  STARTER
+  STANDOUT
+  NATIONAL_TEAM
+  LEGACY
+}
+
+enum TeamKind {
+  CLUB
+  NATIONAL
+}
+
+enum TransferType {
+  PERMANENT
+  LOAN
+  FREE
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum InjurySeverity {
+  MINOR
+  MODERATE
+  SEVERE
+}
+
+enum CompetitionType {
+  LEAGUE
+  CUP
+  INTERNATIONAL
+  FRIENDLY
+  EVENT
+}
+
+enum TournamentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum StageType {
+  GROUP
+  ROUND_OF_32
+  ROUND_OF_16
+  QUARTER_FINAL
+  SEMI_FINAL
+  FINAL
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  HALFTIME
+  FINISHED
+  ABANDONED
+}
+
+enum MatchEventType {
+  GOAL
+  OWN_GOAL
+  ASSIST
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION
+  INJURY
+  PENALTY_SCORED
+  PENALTY_MISSED
+  CORNER
+  OFFSIDE
+}
+
+enum CardRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+  SPECIAL
+}
+
+enum WalletCurrency {
+  COINS
+  TOKENS
+}
+
+enum WalletTransactionType {
+  SOURCE
+  SINK
+}
+
+enum DuelStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum DuelTier {
+  BRONZE
+  SILVER
+  GOLD
+  ELITE
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+// ---------- Identity & profile ----------
+
+model User {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player          Player?
+  wallet          Wallet?
+  cards           UserCard[]
+  packOpenings    PackOpening[]
+  notifications   Notification[]
+  achievements    UserAchievement[]
+  auditLogs       AuditLog[]
+  duelsChallenged Duel[]            @relation("DuelChallenger")
+  duelsReceived   Duel[]            @relation("DuelOpponent")
+
+  @@index([discordId])
+}
+
+model Player {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  nickname    String
+  nationality String // ISO 3166-1 alpha-2
+  birthDate   DateTime
+  position    Position
+  preferredFoot PreferredFoot
+  heightCm    Int
+  playStyle   PlayStyle
+  shirtNumber Int?
+  bio         String?
+  celebration String?
+
+  // Cosmetics — never gameplay-affecting (see docs/DATABASE.md).
+  primaryColor   String?
+  secondaryColor String?
+  theme          String?
+  cardStyle      String?
+
+  // Core ability attributes (0-99). Denormalized OVR is recalculated by the
+  // application layer whenever an attribute changes — never hand-edited.
+  pace      Int @default(50)
+  shooting  Int @default(50)
+  passing   Int @default(50)
+  dribbling Int @default(50)
+  defending Int @default(50)
+  physical  Int @default(50)
+
+  // Goalkeeper-only attributes, null for outfield players.
+  gkReflexes     Int?
+  gkPositioning  Int?
+  gkHandling     Int?
+  gkAerial       Int?
+  gkOneOnOne     Int?
+  gkPenalties    Int?
+  gkAiControlled Boolean @default(false)
+
+  overall      Int   @default(50) // OVR
+  form         Int   @default(50) // recent-performance metric, distinct from OVR
+  globalRating Float @default(0) // ranking metric, distinct from OVR and form
+  stamina      Int   @default(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  career          Career?
+  contracts       Contract[]
+  transfers       Transfer[]
+  teamMemberships TeamPlayer[]
+  matchStats      MatchPlayerStat[]
+  seasonStats     PlayerSeasonStat[]
+  injuries        Injury[]
+  trainingLogs    TrainingLog[]
+  matchEvents     MatchEvent[]
+  rankingEntries  RankingSnapshot[]
+  records         Record[]
+  rivalriesAsA    Rivalry[]          @relation("RivalryPlayerA")
+  rivalriesAsB    Rivalry[]          @relation("RivalryPlayerB")
+
+  @@index([nationality])
+  @@index([position])
+}
+
+model Career {
+  id       String      @id @default(cuid())
+  playerId String      @unique
+  player   Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  stage    CareerStage @default(BASE)
+
+  currentClubId String?
+  currentClub   Club?   @relation(fields: [currentClubId], references: [id])
+
+  debutAt    DateTime?
+  retiredAt  DateTime?
+  isRetired  Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Clubs, teams & competitions ----------
+
+model Club {
+  id           String  @id @default(cuid())
+  name         String
+  shortName    String?
+  country      String
+  tier         Int     @default(1)
+  reputation   Int     @default(50)
+  budget       Decimal @default(0) @db.Decimal(14, 2)
+  stadiumName  String?
+  crestUrl     String?
+  primaryColor String?
+  secondaryColor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams          Team[]
+  careers        Career[]
+  contracts      Contract[]
+  transfersOut   Transfer[] @relation("TransferFromClub")
+  transfersIn    Transfer[] @relation("TransferToClub")
+
+  @@index([country])
+}
+
+model Team {
+  id       String   @id @default(cuid())
+  kind     TeamKind
+  name     String
+  clubId   String?
+  club     Club?    @relation(fields: [clubId], references: [id])
+  country  String? // used when kind = NATIONAL
+  seasonId String
+  season   Season   @relation(fields: [seasonId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  roster           TeamPlayer[]
+  homeMatches      Match[]           @relation("HomeTeam")
+  awayMatches      Match[]           @relation("AwayTeam")
+  tournamentEntries TournamentEntry[]
+
+  @@index([seasonId])
+  @@index([clubId])
+}
+
+model TeamPlayer {
+  id           String    @id @default(cuid())
+  teamId       String
+  team         Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  playerId     String
+  player       Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  squadNumber  Int?
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+
+  @@unique([teamId, playerId, joinedAt])
+  @@index([playerId])
+}
+
+model Season {
+  id        String   @id @default(cuid())
+  name      String // e.g. "SEASON 01 — THE BEGINNING"
+  number    Int      @unique
+  startsAt  DateTime
+  endsAt    DateTime?
+  isActive  Boolean  @default(false)
+
+  teams        Team[]
+  tournaments  Tournament[]
+  transfers    Transfer[]
+  seasonStats  PlayerSeasonStat[]
+  rankings     RankingSnapshot[]
+}
+
+model Competition {
+  id     String          @id @default(cuid())
+  name   String          @unique
+  type   CompetitionType
+  country String? // null for international competitions
+
+  tournaments Tournament[]
+}
+
+model Tournament {
+  id            String            @id @default(cuid())
+  competitionId String
+  competition   Competition       @relation(fields: [competitionId], references: [id])
+  seasonId      String
+  season        Season            @relation(fields: [seasonId], references: [id])
+  status        TournamentStatus  @default(SCHEDULED)
+
+  createdAt DateTime @default(now())
+
+  stages  TournamentStage[]
+  entries TournamentEntry[]
+  matches Match[]
+
+  @@unique([competitionId, seasonId])
+}
+
+model TournamentStage {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  type         StageType
+  order        Int
+  groupName    String? // only for StageType.GROUP
+
+  matches Match[]
+
+  @@index([tournamentId])
+}
+
+model TournamentEntry {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamId       String
+  team         Team       @relation(fields: [teamId], references: [id])
+  groupName    String?
+  seed         Int?
+
+  @@unique([tournamentId, teamId])
+}
+
+// ---------- Matches ----------
+
+model Match {
+  id             String       @id @default(cuid())
+  tournamentId   String?
+  tournament     Tournament?  @relation(fields: [tournamentId], references: [id])
+  stageId        String?
+  stage          TournamentStage? @relation(fields: [stageId], references: [id])
+  homeTeamId     String
+  homeTeam       Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId     String
+  awayTeam       Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  status         MatchStatus  @default(SCHEDULED)
+  homeScore      Int          @default(0)
+  awayScore      Int          @default(0)
+  scheduledAt    DateTime
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  // Snapshot of the simulation seed/config for reproducibility & anti-cheat audits.
+  simulationSeed String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events      MatchEvent[]
+  playerStats MatchPlayerStat[]
+  records     Record[]
+
+  @@index([tournamentId])
+  @@index([scheduledAt])
+}
+
+model MatchEvent {
+  id       String         @id @default(cuid())
+  matchId  String
+  match    Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  minute   Int
+  type     MatchEventType
+  playerId String?
+  player   Player?        @relation(fields: [playerId], references: [id])
+  metadata Json? // e.g. { assistPlayerId, cardReason, subInPlayerId }
+
+  createdAt DateTime @default(now())
+
+  @@index([matchId])
+}
+
+model MatchPlayerStat {
+  id       String @id @default(cuid())
+  matchId  String
+  match    Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  minutesPlayed Int @default(0)
+  goals         Int @default(0)
+  assists       Int @default(0)
+  shots         Int @default(0)
+  passesCompleted Int @default(0)
+  tackles       Int @default(0)
+  interceptions Int @default(0)
+  saves         Int @default(0)
+  goalsConceded Int @default(0)
+  rating        Float @default(6.0)
+
+  @@unique([matchId, playerId])
+}
+
+model PlayerSeasonStat {
+  id       String @id @default(cuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  seasonId String
+  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  matches   Int   @default(0)
+  goals     Int   @default(0)
+  assists   Int   @default(0)
+  avgRating Float @default(0)
+
+  @@unique([playerId, seasonId])
+}
+
+// ---------- Contracts, transfers, training, injuries ----------
+
+model Contract {
+  id         String         @id @default(cuid())
+  playerId   String
+  player     Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  clubId     String
+  club       Club           @relation(fields: [clubId], references: [id])
+  status     ContractStatus @default(ACTIVE)
+  salary     Decimal        @db.Decimal(14, 2)
+  releaseClause Decimal?    @db.Decimal(14, 2)
+  startsAt   DateTime
+  endsAt     DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([playerId])
+  @@index([clubId])
+}
+
+model Transfer {
+  id         String       @id @default(cuid())
+  playerId   String
+  player     Player       @relation(fields: [playerId], references: [id])
+  fromClubId String?
+  fromClub   Club?        @relation("TransferFromClub", fields: [fromClubId], references: [id])
+  toClubId   String
+  toClub     Club         @relation("TransferToClub", fields: [toClubId], references: [id])
+  seasonId   String
+  season     Season       @relation(fields: [seasonId], references: [id])
+  type       TransferType
+  fee        Decimal      @default(0) @db.Decimal(14, 2)
+  announcedAt DateTime    @default(now())
+
+  @@index([playerId])
+}
+
+model TrainingLog {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  focus     String // e.g. "shooting", "stamina"
+  gainedAttributePoints Int @default(0)
+  staminaCost Int    @default(0)
+  performedAt DateTime @default(now())
+
+  @@index([playerId])
+}
+
+model Injury {
+  id         String         @id @default(cuid())
+  playerId   String
+  player     Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  severity   InjurySeverity
+  diagnosis  String
+  occurredAt DateTime       @default(now())
+  expectedReturnAt DateTime?
+  recoveredAt DateTime?
+
+  @@index([playerId])
+}
+
+// ---------- Economy ----------
+
+model Wallet {
+  id      String @id @default(cuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coins   BigInt @default(0)
+  tokens  BigInt @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  transactions WalletTransaction[]
+}
+
+// Append-only ledger — balances are derived/verified from this, never
+// mutated directly, so every coin movement is auditable and idempotent.
+model WalletTransaction {
+  id             String                @id @default(cuid())
+  walletId       String
+  wallet         Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  currency       WalletCurrency
+  type           WalletTransactionType
+  amount         BigInt // always positive; `type` gives direction
+  balanceAfter   BigInt
+  reason         String // e.g. "MATCH_REWARD", "PACK_PURCHASE"
+  idempotencyKey String                @unique
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+
+  @@index([walletId])
+}
+
+// ---------- Cards ----------
+
+model Card {
+  id       String     @id @default(cuid())
+  name     String
+  position Position
+  overall  Int
+  attributes Json // { pace, shooting, passing, dribbling, defending, physical, ... }
+  rarity   CardRarity
+  ability  String?
+  version  String     @default("base") // e.g. "base", "event-2026", "historic"
+  imageUrl String?
+
+  createdAt DateTime @default(now())
+
+  ownedBy       UserCard[]
+  packContents  PackOdds[]
+
+  @@index([rarity])
+}
+
+model CardPack {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  priceCoins  BigInt?
+  priceTokens BigInt?
+  cardCount   Int    @default(5)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  odds     PackOdds[]
+  openings PackOpening[]
+}
+
+model PackOdds {
+  id     String     @id @default(cuid())
+  packId String
+  pack   CardPack   @relation(fields: [packId], references: [id], onDelete: Cascade)
+  rarity CardRarity
+  weight Float // relative probability weight within the pack
+  cardId String? // pin a specific card, or null to roll within `rarity`
+  card   Card?      @relation(fields: [cardId], references: [id])
+
+  @@index([packId])
+}
+
+model PackOpening {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  packId   String
+  pack     CardPack @relation(fields: [packId], references: [id])
+  openedAt DateTime @default(now())
+
+  resultCards UserCard[]
+
+  @@index([userId])
+}
+
+model UserCard {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId        String
+  card          Card         @relation(fields: [cardId], references: [id])
+  packOpeningId String?
+  packOpening   PackOpening? @relation(fields: [packOpeningId], references: [id])
+  level         Int          @default(1)
+  isFavorite    Boolean      @default(false)
+  acquiredAt    DateTime     @default(now())
+
+  @@index([userId])
+}
+
+// ---------- Multiplayer & duels ----------
+
+model Duel {
+  id            String     @id @default(cuid())
+  challengerId  String
+  challenger    User       @relation("DuelChallenger", fields: [challengerId], references: [id])
+  opponentId    String
+  opponent      User       @relation("DuelOpponent", fields: [opponentId], references: [id])
+  tier          DuelTier
+  status        DuelStatus @default(PENDING)
+  matchId       String?    @unique
+  winnerId      String?
+  createdAt     DateTime   @default(now())
+  resolvedAt    DateTime?
+
+  @@index([challengerId])
+  @@index([opponentId])
+}
+
+model Rivalry {
+  id          String @id @default(cuid())
+  playerAId   String
+  playerA     Player @relation("RivalryPlayerA", fields: [playerAId], references: [id])
+  playerBId   String
+  playerB     Player @relation("RivalryPlayerB", fields: [playerBId], references: [id])
+  playerAWins Int    @default(0)
+  playerBWins Int    @default(0)
+  lastMatchAt DateTime?
+
+  @@unique([playerAId, playerBId])
+}
+
+// ---------- Rankings, records, achievements, news ----------
+
+model RankingSnapshot {
+  id          String   @id @default(cuid())
+  scope       String // "GLOBAL" | "COUNTRY:BR" | "POSITION:ST" | ...
+  metric      String // "OVR" | "GLOBAL_RATING" | "GOALS" | "ASSISTS" | ...
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  seasonId    String?
+  season      Season?  @relation(fields: [seasonId], references: [id])
+  value       Float
+  rank        Int
+  computedAt  DateTime @default(now())
+
+  @@index([scope, metric, computedAt])
+  @@index([playerId])
+}
+
+model Record {
+  id               String   @id @default(cuid())
+  category         String // "MOST_GOALS_SEASON" | "LONGEST_WIN_STREAK" | ...
+  holderPlayerId   String
+  holderPlayer     Player   @relation(fields: [holderPlayerId], references: [id])
+  value            Float
+  matchId          String?
+  match            Match?   @relation(fields: [matchId], references: [id])
+  previousHolderId String?
+  previousValue    Float?
+  achievedAt       DateTime @default(now())
+
+  @@index([category])
+}
+
+model Achievement {
+  id          String @id @default(cuid())
+  key         String @unique
+  name        String
+  description String
+
+  unlockedBy UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model News {
+  id            String   @id @default(cuid())
+  headline      String
+  body          String
+  facts         Json // structured facts the narrative was generated from
+  generatedByAi Boolean  @default(false)
+  publishedAt   DateTime @default(now())
+
+  @@index([publishedAt])
+}
+
+// ---------- Notifications & audit ----------
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  payload   Json
+  status    NotificationStatus  @default(PENDING)
+  createdAt DateTime            @default(now())
+  sentAt    DateTime?
+
+  @@index([userId, status])
+}
+
+// Security/compliance trail for sensitive or economy-affecting actions.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // e.g. "PACK_OPENED", "TRANSFER_COMPLETED", "COINS_GRANTED"
+  entity    String
+  entityId  String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
+}
