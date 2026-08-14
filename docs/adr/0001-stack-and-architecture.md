@@ -40,6 +40,8 @@ src/
   discord/      # client, registro de comandos, comandos
   game/         # motor de partida (Fase 3)
   ai/           # IA de gameplay — máquina de estados (Fase 3)
+  identity/     # resolve Discord snowflake -> User.id interno (ports/adapters)
+  player/       # perfil/personalização (ports/adapters/domain/services) — Fase 2
   career/       # carreira, treino, escalação (Fase 4)
   competitions/ # ligas, copas, temporadas (Fase 5)
   economy/      # coins, wallet, transações (Fase 6)
@@ -78,6 +80,18 @@ o produto proíbe explicitamente).
   garantias de transação/concorrência que o Postgres oferece de forma mais
   robusta. SQLite pode ser usado localmente se necessário, mas o schema é
   escrito para Postgres desde o início (evita reescrever migrations depois).
+
+## Adenda (Fase 2) — ports & adapters para Discord/banco
+
+`identity/` e `player/` seguem um padrão hexagonal explícito:
+`domain/` (regras puras, sem I/O) → `ports/` (interfaces) → `adapters/`
+(implementação real com Prisma + implementação em memória para teste) →
+`services/` (casos de uso que dependem só da porta, nunca do adapter
+concreto). Isso não é over-engineering gratuito — foi pedido explicitamente
+para permitir testar toda a lógica de negócio sem credenciais reais e
+trocar a implementação depois sem tocar em domínio/serviço. Módulos futuros
+(economy, cards, competitions) devem seguir o mesmo padrão quando também
+precisarem ser testáveis sem infraestrutura real.
 
 ## Consequências
 

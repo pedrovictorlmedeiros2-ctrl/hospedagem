@@ -1,17 +1,12 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
-import type { PrismaClient } from "@prisma/client";
-import type { Logger } from "../shared/logger.js";
-import type { EventBus } from "../shared/eventBus.js";
-import { buildCommandRegistry } from "./commandRegistry.js";
 import { isAppError } from "../shared/errors.js";
+import { buildCommandRegistry } from "./commandRegistry.js";
+import type { CommandContext } from "./commands/types.js";
 
-export interface CreateClientDeps {
-  prisma: PrismaClient;
-  logger: Logger;
-  events: EventBus;
-}
+export type CreateClientDeps = CommandContext;
 
-export function createDiscordClient({ prisma, logger, events }: CreateClientDeps): Client {
+export function createDiscordClient(ctx: CreateClientDeps): Client {
+  const { logger } = ctx;
   const client = new Client({
     // Slash commands + button/select interactions only — no message content
     // intent, since gameplay is entirely component-driven (see product spec:
@@ -34,7 +29,7 @@ export function createDiscordClient({ prisma, logger, events }: CreateClientDeps
       return;
     }
 
-    command.execute(interaction, { prisma, logger, events }).catch(async (error: unknown) => {
+    command.execute(interaction, ctx).catch(async (error: unknown) => {
       const userMessage = isAppError(error)
         ? error.message
         : "Algo deu errado do nosso lado. Já registramos o erro — tenta de novo em instantes.";

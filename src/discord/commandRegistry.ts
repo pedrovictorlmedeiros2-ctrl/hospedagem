@@ -1,6 +1,8 @@
 import { Collection } from "discord.js";
-import type { Command } from "./commands/types.js";
+import { criarPerfilCommand } from "./commands/criarPerfil.js";
+import { personalizarCommand } from "./commands/personalizar.js";
 import { pingCommand } from "./commands/ping.js";
+import type { Command } from "./commands/types.js";
 
 /**
  * Every slash command the bot knows about. Register a new command by adding
@@ -11,7 +13,7 @@ import { pingCommand } from "./commands/ping.js";
 export function buildCommandRegistry(): Collection<string, Command> {
   const commands = new Collection<string, Command>();
 
-  for (const command of [pingCommand]) {
+  for (const command of [pingCommand, criarPerfilCommand, personalizarCommand]) {
     commands.set(command.data.name, command);
   }
 

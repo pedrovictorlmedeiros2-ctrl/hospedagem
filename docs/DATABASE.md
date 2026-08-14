@@ -72,8 +72,16 @@ exigiria `onDelete` cuidadoso sem ganho real de uso.
 
 ## Migrations
 
-Nenhuma migration foi rodada ainda porque não há `DATABASE_URL` real neste
-ambiente. `npx prisma generate` roda sem banco (só lê o schema) e foi usado
-para validar que o schema compila. `npx prisma migrate dev` precisa de uma
-connection string real de Postgres — isso é uma decisão/ação do usuário
-(ver docs/adr/0001, seção Consequências).
+Nenhuma migration foi **aplicada** ainda porque não há `DATABASE_URL` real
+neste ambiente. `npx prisma generate` roda sem banco (só lê o schema) e foi
+usado para validar que o schema compila.
+
+`prisma/migrations/20260814000000_init/migration.sql` existe e foi gerado
+com `npx prisma migrate diff --from-empty --to-schema-datamodel
+prisma/schema.prisma --script` — um comando que só faz diff estrutural
+schema→SQL, sem se conectar a nenhum banco. Isso é diferente de `prisma
+migrate dev`, que teria de fato aplicado a migration e validado que ela
+roda sem erro contra um Postgres real. **Este SQL nunca foi executado.**
+Para validar de verdade: forneça um `DATABASE_URL` real e rode `npx prisma
+migrate deploy` (aplica as migrations existentes) ou `npx prisma migrate
+dev` (aplica e também gera novas migrations a partir de mudanças no schema).

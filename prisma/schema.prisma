@@ -207,10 +207,12 @@ model Player {
   celebration String?
 
   // Cosmetics — never gameplay-affecting (see docs/DATABASE.md).
-  primaryColor   String?
-  secondaryColor String?
-  theme          String?
-  cardStyle      String?
+  primaryColor      String?
+  secondaryColor    String?
+  theme             String?
+  cardStyle         String?
+  profileFrame      String?
+  profileBackground String?
 
   // Core ability attributes (0-99). Denormalized OVR is recalculated by the
   // application layer whenever an attribute changes — never hand-edited.

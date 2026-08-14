@@ -1,16 +1,20 @@
 import { loadEnv } from "./config/env.js";
-import { createLogger } from "./shared/logger.js";
-import { EventBus } from "./shared/eventBus.js";
 import { getPrismaClient, disconnectPrisma } from "./database/prisma.js";
 import { createDiscordClient } from "./discord/client.js";
+import { PrismaUserRepository } from "./identity/adapters/prismaUserRepository.js";
+import { PrismaPlayerRepository } from "./player/adapters/prismaPlayerRepository.js";
+import { EventBus } from "./shared/eventBus.js";
+import { createLogger } from "./shared/logger.js";
 
 async function main() {
   const env = loadEnv();
   const logger = createLogger(env.LOG_LEVEL);
   const prisma = getPrismaClient();
   const events = new EventBus(logger);
+  const userRepository = new PrismaUserRepository(prisma);
+  const playerRepository = new PrismaPlayerRepository(prisma);
 
-  const client = createDiscordClient({ prisma, logger, events });
+  const client = createDiscordClient({ prisma, logger, events, userRepository, playerRepository });
 
   let shuttingDown = false;
   async function shutdown(signal: string) {

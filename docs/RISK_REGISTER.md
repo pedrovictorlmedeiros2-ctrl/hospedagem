@@ -14,6 +14,10 @@ de verdade (código + teste), nunca só por ter sido discutido.
 | 7 | Volume de usuários simultâneos desconhecido | Médio | Não adicionar infraestrutura (Redis/filas) sem tráfego real que justifique — decisão registrada em ADR 0001; reavaliar a cada fase com dados reais | Monitorando |
 | 8 | Vulnerabilidades em dependências transitivas (`npm audit` reportou 5 no scaffold inicial) | Baixo no momento (sem deploy) | Revisar `npm audit` antes de qualquer deploy real; não usar `--force` sem entender a mudança breaking | Ativo — ver nota abaixo |
 
+| 9 | Erros de conexão do Prisma podem incluir a connection string (com credenciais) na mensagem de erro, e `client.ts` loga `error` inteiro | Médio — vazamento de credencial em log | Não implementado ainda; próximo passo é redigir/filtrar `DATABASE_URL` antes de logar erros de infraestrutura | Identificado na revisão de segurança da Fase 2, não mitigado |
+| 10 | Nome/apelido de jogador não são únicos globalmente (só `userId` é) | Baixo — decisão consciente, não bug | Documentado em docs/DATABASE.md; se precisar de unicidade de apelido no futuro, exige checar colisão + UX de sugestão de alternativa | Decisão aceita |
+| 11 | Lista de nacionalidades válidas (`KNOWN_NATIONALITIES`) é um subconjunto curado do ISO 3166-1 alpha-2, não o catálogo completo | Baixo — jogador de um país fora da lista não consegue criar perfil | Documentado no próprio código; ampliar a lista é uma mudança pequena e segura quando um usuário real esbarrar nisso | Aceito por ora |
+
 ## Nota sobre `npm audit`
 
 Ao instalar as dependências iniciais, `npm audit` reportou 5 vulnerabilidades
