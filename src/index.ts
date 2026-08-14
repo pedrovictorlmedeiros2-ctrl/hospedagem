@@ -8,6 +8,8 @@ import { createDiscordClient } from "./discord/client.js";
 import { PrismaMarketRepository } from "./economy/adapters/prismaMarketRepository.js";
 import { PrismaWalletRepository } from "./economy/adapters/prismaWalletRepository.js";
 import { PrismaMatchRepository } from "./game/adapters/prismaMatchRepository.js";
+import { PrismaRecordRepository } from "./global/adapters/prismaRecordRepository.js";
+import { PrismaRivalryRepository } from "./global/adapters/prismaRivalryRepository.js";
 import { PrismaUserRepository } from "./identity/adapters/prismaUserRepository.js";
 import { PrismaDuelRepository } from "./multiplayer/adapters/prismaDuelRepository.js";
 import { PrismaPlayerRepository } from "./player/adapters/prismaPlayerRepository.js";
@@ -29,6 +31,8 @@ async function main() {
   const marketRepository = new PrismaMarketRepository(prisma);
   const cardRepository = new PrismaCardRepository(prisma);
   const duelRepository = new PrismaDuelRepository(prisma);
+  const recordRepository = new PrismaRecordRepository(prisma);
+  const rivalryRepository = new PrismaRivalryRepository(prisma);
 
   const client = createDiscordClient({
     prisma,
@@ -44,6 +48,8 @@ async function main() {
     marketRepository,
     cardRepository,
     duelRepository,
+    recordRepository,
+    rivalryRepository,
   });
 
   let shuttingDown = false;

@@ -6,6 +6,7 @@ import type {
   PlayerProfilePatch,
   PlayerRecord,
   PlayerRepository,
+  RankingMetric,
 } from "../ports/playerRepository.js";
 
 type PlayerRow = Awaited<ReturnType<PrismaClient["player"]["create"]>>;
@@ -81,6 +82,11 @@ export class PrismaPlayerRepository implements PlayerRepository {
     return row ? toDomain(row) : null;
   }
 
+  async findById(playerId: string): Promise<PlayerRecord | null> {
+    const row = await this.prisma.player.findUnique({ where: { id: playerId } });
+    return row ? toDomain(row) : null;
+  }
+
   async update(userId: string, patch: PlayerProfilePatch): Promise<PlayerRecord> {
     try {
       const row = await this.prisma.player.update({ where: { userId }, data: patch });
@@ -103,5 +109,13 @@ export class PrismaPlayerRepository implements PlayerRepository {
       }
       throw error;
     }
+  }
+
+  async listTopPlayers(metric: RankingMetric, limit: number): Promise<PlayerRecord[]> {
+    const rows =
+      metric === "GLOBAL_RATING"
+        ? await this.prisma.player.findMany({ orderBy: { globalRating: "desc" }, take: limit })
+        : await this.prisma.player.findMany({ orderBy: { overall: "desc" }, take: limit });
+    return rows.map(toDomain);
   }
 }

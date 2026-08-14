@@ -7,6 +7,8 @@ import type { CompetitionRepository } from "../../competitions/ports/competition
 import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
+import type { RecordRepository } from "../../global/ports/recordRepository.js";
+import type { RivalryRepository } from "../../global/ports/rivalryRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { DuelRepository } from "../../multiplayer/ports/duelRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
@@ -27,6 +29,8 @@ export interface CommandContext {
   marketRepository: MarketRepository;
   cardRepository: CardRepository;
   duelRepository: DuelRepository;
+  recordRepository: RecordRepository;
+  rivalryRepository: RivalryRepository;
 }
 
 /**

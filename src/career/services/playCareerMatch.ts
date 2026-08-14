@@ -11,6 +11,9 @@ import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
 import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
 import { simulateMatch } from "../../game/engine/simulateMatch.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
+import type { RecordCategory } from "../../global/domain/records.js";
+import type { RecordRepository } from "../../global/ports/recordRepository.js";
+import { checkAndUpdateRecord } from "../../global/services/checkAndUpdateRecord.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
@@ -39,6 +42,7 @@ export interface PlayCareerMatchDeps {
   matchRepository: MatchRepository;
   walletRepository: WalletRepository;
   marketRepository: MarketRepository;
+  recordRepository: RecordRepository;
   events: EventBus;
 }
 
@@ -61,6 +65,8 @@ export interface PlayCareerMatchOutput {
   injuryOccurred: boolean;
   coinsEarned: number;
   salaryPaid: number;
+  /** World records broken by this match (today only MOST_GOALS_SEASON can trigger here). */
+  recordsBroken: RecordCategory[];
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
@@ -143,6 +149,19 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
 
   await deps.competitionRepository.recordFixtureResult(tournamentId, fixture.matchId, result.homeScore, result.awayScore);
 
+  const recordsBroken: RecordCategory[] = [];
+  if (persisted.seasonStat.goals > 0) {
+    // Guards against the very first career match anyone in the world
+    // ever plays trivially "setting a record" of 0 goals — checkAndUpdateRecord's
+    // null-current case treats any value as a new record, which is
+    // correct in general but not worth celebrating at zero.
+    const goalsCheck = await checkAndUpdateRecord(
+      { recordRepository: deps.recordRepository },
+      { category: "MOST_GOALS_SEASON", playerId: player.id, value: persisted.seasonStat.goals, now },
+    );
+    if (goalsCheck.isNewRecord) recordsBroken.push("MOST_GOALS_SEASON");
+  }
+
   let coinsEarned = 0;
   if (realStat) {
     const playerScore = playerSide === "home" ? result.homeScore : result.awayScore;
@@ -216,5 +235,6 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     injuryOccurred: injuredInMatch,
     coinsEarned,
     salaryPaid,
+    recordsBroken,
   };
 }

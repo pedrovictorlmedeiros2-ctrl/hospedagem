@@ -3,6 +3,10 @@ import { buildSquadFromProfile } from "../../game/domain/buildSquadFromProfile.j
 import { createRng } from "../../game/domain/rng.js";
 import type { MatchResult } from "../../game/domain/types.js";
 import { simulateMatch } from "../../game/engine/simulateMatch.js";
+import type { RecordCategory } from "../../global/domain/records.js";
+import type { RecordRepository } from "../../global/ports/recordRepository.js";
+import type { RivalryRepository } from "../../global/ports/rivalryRepository.js";
+import { checkAndUpdateRecord } from "../../global/services/checkAndUpdateRecord.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import { ProfileNotFoundError } from "../../player/domain/errors.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
@@ -17,6 +21,8 @@ export interface RespondToDuelDeps {
   playerRepository: PlayerRepository;
   duelRepository: DuelRepository;
   walletRepository: WalletRepository;
+  recordRepository: RecordRepository;
+  rivalryRepository: RivalryRepository;
   events: EventBus;
 }
 
@@ -44,6 +50,10 @@ export interface DuelResolvedOutput {
   opponentRatingDelta: number;
   challengerReward: number;
   opponentReward: number;
+  /** World records broken by either player as a result of this duel (today only HIGHEST_GLOBAL_RATING can trigger here). */
+  recordsBroken: RecordCategory[];
+  rivalryChallengerWins: number;
+  rivalryOpponentWins: number;
 }
 
 export type RespondToDuelOutput = DuelDeclinedOutput | DuelResolvedOutput;
@@ -113,6 +123,29 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
   await deps.playerRepository.updateAttributes(challenger.id, { globalRating: eloUpdate.newChallengerRating });
   await deps.playerRepository.updateAttributes(responder.id, { globalRating: eloUpdate.newOpponentRating });
 
+  const recordsBroken: RecordCategory[] = [];
+  for (const [playerId, newRating] of [
+    [challengerPlayer.id, eloUpdate.newChallengerRating],
+    [opponentPlayer.id, eloUpdate.newOpponentRating],
+  ] as const) {
+    const check = await checkAndUpdateRecord(
+      { recordRepository: deps.recordRepository },
+      { category: "HIGHEST_GLOBAL_RATING", playerId, value: newRating, now },
+    );
+    if (check.isNewRecord) recordsBroken.push("HIGHEST_GLOBAL_RATING");
+  }
+
+  const winnerPlayerId =
+    outcome === "CHALLENGER_WIN" ? challengerPlayer.id : outcome === "OPPONENT_WIN" ? opponentPlayer.id : null;
+  const rivalry = await deps.rivalryRepository.recordRivalryResult(
+    challengerPlayer.id,
+    opponentPlayer.id,
+    winnerPlayerId,
+    now,
+  );
+  const rivalryChallengerWins = rivalry.playerAId === challengerPlayer.id ? rivalry.playerAWins : rivalry.playerBWins;
+  const rivalryOpponentWins = rivalry.playerAId === challengerPlayer.id ? rivalry.playerBWins : rivalry.playerAWins;
+
   const challengerResult = outcome === "CHALLENGER_WIN" ? "WIN" : outcome === "DRAW" ? "DRAW" : "LOSS";
   const opponentResult = outcome === "OPPONENT_WIN" ? "WIN" : outcome === "DRAW" ? "DRAW" : "LOSS";
   const challengerReward = calculateDuelReward(challengerResult);
@@ -145,5 +178,8 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
     opponentRatingDelta: eloUpdate.opponentDelta,
     challengerReward,
     opponentReward,
+    recordsBroken,
+    rivalryChallengerWins,
+    rivalryOpponentWins,
   };
 }

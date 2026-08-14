@@ -39,7 +39,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   ];
 
   const container = new ContainerBuilder()
-    .setAccentColor(match.injuryOccurred ? 0xe74c3c : 0xf1c40f)
+    .setAccentColor(match.recordsBroken.length > 0 ? 0xf1c40f : match.injuryOccurred ? 0xe74c3c : 0xf1c40f)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚽ Partida da carreira"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(summaryLines.join("\n")));
@@ -61,6 +61,9 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
     footerLines.push(
       "🚑 Você se machucou nesta partida — confira /carreira para o prazo de recuperação.",
     );
+  }
+  if (match.recordsBroken.includes("MOST_GOALS_SEASON")) {
+    footerLines.push("🏆 **NOVO RECORDE MUNDIAL DE GOLS NUMA TEMPORADA!** Confira /recordes.");
   }
   if (footerLines.length > 0) {
     container

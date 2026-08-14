@@ -31,10 +31,11 @@ export function buildDuelResultCard(
     winnerName ? `Vencedor: **${winnerName}**` : "Empate!",
     `${challengerName}: ${formatDelta(output.challengerRatingDelta)} rating • +${output.challengerReward} coins`,
     `${opponentName}: ${formatDelta(output.opponentRatingDelta)} rating • +${output.opponentReward} coins`,
+    `Histórico: ${challengerName} ${output.rivalryChallengerWins} x ${output.rivalryOpponentWins} ${opponentName}`,
   ];
 
   const container = new ContainerBuilder()
-    .setAccentColor(0x9b59b6)
+    .setAccentColor(output.recordsBroken.length > 0 ? 0xf1c40f : 0x9b59b6)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚔️ Resultado do duelo"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(summaryLines.join("\n")));
@@ -44,6 +45,14 @@ export function buildDuelResultCard(
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(highlights.join("\n")));
+  }
+
+  if (output.recordsBroken.length > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("🏆 **NOVO RECORDE MUNDIAL DE RATING!** Confira /recordes."),
+      );
   }
 
   return container;

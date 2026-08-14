@@ -20,6 +20,7 @@ export const jogarCarreiraCommand: Command = {
         matchRepository: ctx.matchRepository,
         walletRepository: ctx.walletRepository,
         marketRepository: ctx.marketRepository,
+        recordRepository: ctx.recordRepository,
         events: ctx.events,
       },
       { discordId: interaction.user.id },

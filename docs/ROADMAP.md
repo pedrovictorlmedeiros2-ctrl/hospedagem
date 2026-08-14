@@ -15,7 +15,7 @@ briefing original do produto.
 | 6 | Economy (coins, mercado, transferências, contratos) | ✅ Implementada e testada — coins, recompensas, treino intensivo, contratos com salário e transferências entre clubes da liga | `/carteira`, `/contrato`, `/propostas`, `/transferir`, 52 testes novos (221 no total). Ver seção "O que a Fase 6 entrega" abaixo |
 | 7 | Cards (cartas, packs, inventário) | ✅ Implementada e testada — catálogo fixo, sorteio ponderado, abertura à prova de duplicação | `/pacotes`, `/abrir-pacote`, `/colecao`, 20 testes novos (241 no total). Ver seção "O que a Fase 7 entrega" abaixo |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ✅ Implementada e testada — desafio direto, duelo simulado com o motor real, rating ELO, recompensa em coins | `/duelo-desafiar`, `/duelo-responder`, `/duelos`, 29 testes novos (270 no total). Ver seção "O que a Fase 8 entrega" abaixo |
-| 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ⏳ Não iniciada | Schema já modelado (RankingSnapshot/Record/Rivalry) |
+| 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | 🟡 Ranking/recordes/rivalidades implementados e testados; rollover de temporada adiado (inalcançável no código atual, ver adenda) | `/ranking`, `/recordes`, `/rivalidade`, 29 testes novos (299 no total). Ver seção "O que a Fase 9 entrega" abaixo e adenda em docs/adr/0001 |
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ⏳ Não iniciada | Depende de `GROQ_API_KEY` |
 | 11 | Polish (UX, animações, acessibilidade, performance) | ⏳ Não iniciada | Contínuo, revisado a cada fase anterior também |
 
@@ -568,3 +568,89 @@ CHALLENGER/OPPONENT correto, contraparte resolvida corretamente).
   quantos desafios pendentes recebidos quiser ao mesmo tempo (contra
   adversários diferentes); só é bloqueado um segundo desafio contra o
   MESMO adversário enquanto o primeiro estiver aberto.
+
+## O que a Fase 9 entrega
+
+`src/global/` entra como um novo contexto hexagonal, mas com um formato
+diferente de todo contexto anterior: não tem um "fluxo principal" próprio,
+ele lê e reage a eventos de `career/` e `multiplayer/`. Domínio puro
+(`domain/records.ts`, `domain/rivalry.ts`) → portas
+(`ports/recordRepository.ts`, `ports/rivalryRepository.ts`) → adapters
+Prisma real + in-memory (`adapters/`) → serviços
+(`services/viewRanking.ts`, `services/checkAndUpdateRecord.ts`,
+`services/viewRivalry.ts`, `services/viewRecords.ts`).
+
+**Decisão de escopo, registrada antes de qualquer código:** o pedido
+original de Fase 9 inclui "temporadas". Investigando o código, encontrei
+que `getOrCreateActiveSeason` está hardcoded pra temporada 1 e
+`leagueNameFor` nomeia a liga só pela nacionalidade (sem número de
+temporada) — rollover de temporada é uma feature grande e hoje
+inalcançável, sem nenhum caminho no código atual que leve a uma temporada
+2. Implementá-la sem também corrigir `leagueNameFor` colidiria os nomes de
+liga entre temporadas, e nada disso seria validável de ponta a ponta
+neste ambiente (sem banco real). Decisão: entregar ranking/recordes/
+rivalidades por completo, e documentar o gap como risco específico em vez
+de uma versão rasa de "temporadas" que não pode ser provada. Mesmo
+princípio de honestidade de escopo já usado nas Fases 3 e 8.
+
+- **`/ranking` é computado ao vivo, sem `RankingSnapshot`.**
+  `PlayerRepository.listTopPlayers(metric, limit)` faz `ORDER BY` + `LIMIT`
+  direto (Prisma) ou um sort em memória (fake) a cada chamada. Sem
+  tráfego real que justifique cache/job de recorrência, uma query
+  ordenada já é instantânea e sempre correta — mesmo raciocínio do Risco
+  #7 (não adicionar infraestrutura sem dados reais).
+- **`Record` é append-only por desenho do schema** — sem unique constraint
+  em `category` sozinho, então cada recorde quebrado grava uma linha nova,
+  preservando o histórico completo de donos anteriores.
+  `RecordRepository.getCurrentRecord` lê a linha mais recente por
+  `achievedAt`; `setRecord` só cria, nunca faz update.
+  `checkAndUpdateRecord` é check-then-act (não transacional) — mesma
+  categoria de risco de corrida já aceita em `getOrCreateSeasonLeague`
+  (Fase 5); o pior caso numa corrida real é uma linha de histórico a
+  mais/perdida, nunca um valor corrompido.
+- **`Rivalry.playerAId/playerBId` tem unique constraint direcional** —
+  sem canonicalização o mesmo par de jogadores poderia fragmentar em duas
+  linhas dependendo de quem desafiou primeiro. `canonicalizeRivalryPair`
+  ordena os dois ids lexicograficamente antes de toda leitura/escrita.
+- **Dois recordes no lançamento:** `HIGHEST_GLOBAL_RATING` (checado em
+  `respondToDuel`, após a atualização de ELO) e `MOST_GOALS_SEASON`
+  (checado em `playCareerMatch`, só quando `goals > 0`, pra não registrar
+  "recorde de 0 gols" na primeira partida de carreira de qualquer
+  jogador do mundo). Outras categorias ficam para quando houver sinal
+  real de quais métricas os jogadores acompanham.
+- **`respondToDuel` mantém a mesma ordem de operações da Fase 8:** a
+  transição guardada do duelo (PENDING → FINISHED) continua vindo antes
+  das atualizações de rating/recorde/rivalidade, porque nenhuma delas tem
+  idempotência própria — um retry pós-crash não pode reaplicar ELO,
+  recorde ou histórico de confronto uma segunda vez.
+- **`PlayerRepository` ganhou `findById(playerId)`** (só existia
+  `findByUserId`). `Record.holderPlayerId` e `Rivalry.playerAId/playerBId`
+  guardam ids de `Player`, não de `User` — exibir o apelido do dono de um
+  recorde exige resolver por esse id diretamente.
+
+**O que foi validado de verdade:** 29 testes novos (299 no total):
+`isNewRecord`/`canonicalizeRivalryPair` (domínio puro),
+`InMemoryRecordRepository`/`InMemoryRivalryRepository` (persistência
+append-only e canonicalização), `viewRanking` (ordena do maior pro menor,
+respeita o limite, vazio sem jogadores), `checkAndUpdateRecord` (recorde
+inédito, no-op quando não supera, atualiza e lembra o dono anterior),
+`viewRivalry`/`viewRecords` (resolve apelidos, funciona nos dois sentidos
+do par canonicalizado), `playCareerMatch` (reconhece `MOST_GOALS_SEASON`
+com um seed determinístico onde o jogador real marca, não credita recorde
+numa partida sem gols), `respondToDuel` (atualiza o histórico de
+confronto e reporta o recorde mundial quando um é quebrado).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Rollover de temporada** — ver justificativa de escopo acima. Risco
+  específico registrado no RISK_REGISTER.md.
+- **Sistema de conquistas (`Achievement`/`UserAchievement`)** — mencionado
+  no prompt mestre, mas é um sistema de progressão independente
+  (definições, gatilhos, notificação) que merece seu próprio ciclo
+  ANALISE→PLANEJE em vez de ser anexado apressadamente aqui.
+- **Categorias de recorde além de rating e gols por temporada** (mais
+  assistências, sequência de vitórias, etc.) — ficam para quando houver
+  sinal real de uso.
+- **UI de linha do tempo do histórico de recordes** — o histórico
+  completo já existe no banco (append-only, nada descartado), só não tem
+  uma superfície de Discord dedicada; `/recordes` mostra só o dono atual
+  de cada categoria.

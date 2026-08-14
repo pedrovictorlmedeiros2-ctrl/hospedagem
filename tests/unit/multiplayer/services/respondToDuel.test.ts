@@ -4,6 +4,8 @@ import { DuelNotPendingError } from "../../../../src/multiplayer/domain/errors.j
 import { challengeToDuel } from "../../../../src/multiplayer/services/challengeToDuel.js";
 import { respondToDuel } from "../../../../src/multiplayer/services/respondToDuel.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
+import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
+import { InMemoryRivalryRepository } from "../../../../src/global/adapters/inMemoryRivalryRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
 import { STARTING_GLOBAL_RATING } from "../../../../src/player/domain/attributes.js";
@@ -22,6 +24,8 @@ function makeDeps() {
     playerRepository: new InMemoryPlayerRepository(),
     duelRepository: new InMemoryDuelRepository(),
     walletRepository: new InMemoryWalletRepository(),
+    recordRepository: new InMemoryRecordRepository(),
+    rivalryRepository: new InMemoryRivalryRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -102,6 +106,37 @@ describe("respondToDuel", () => {
     const wallet2 = await deps.walletRepository.getOrCreateWallet(user2.id);
     expect(wallet1.coins).toBeGreaterThan(0n);
     expect(wallet2.coins).toBeGreaterThan(0n);
+  });
+
+  it("updates the rivalry head-to-head and reports the world record when one is broken", async () => {
+    const deps = makeDeps();
+    await setupChallenge(deps);
+
+    const result = await respondToDuel(deps, {
+      discordId: "discord-2",
+      challengerDiscordId: "discord-1",
+      accept: true,
+      seed: "test-seed-1",
+    });
+    if (!result.accepted) throw new Error("test setup failed: expected the duel to resolve");
+
+    // Both players started fresh (no prior rating record) — whichever
+    // side's rating went up necessarily set a new HIGHEST_GLOBAL_RATING
+    // record, since STARTING_GLOBAL_RATING was the first value ever
+    // recorded for the other side too.
+    expect(result.recordsBroken).toContain("HIGHEST_GLOBAL_RATING");
+
+    expect(result.rivalryChallengerWins + result.rivalryOpponentWins).toBeLessThanOrEqual(1);
+    if (result.outcome === "CHALLENGER_WIN") {
+      expect(result.rivalryChallengerWins).toBe(1);
+      expect(result.rivalryOpponentWins).toBe(0);
+    } else if (result.outcome === "OPPONENT_WIN") {
+      expect(result.rivalryChallengerWins).toBe(0);
+      expect(result.rivalryOpponentWins).toBe(1);
+    } else {
+      expect(result.rivalryChallengerWins).toBe(0);
+      expect(result.rivalryOpponentWins).toBe(0);
+    }
   });
 
   it("rejects responding to a duel that was already resolved", async () => {

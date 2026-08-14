@@ -4,10 +4,12 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 8 — Multiplayer** implementada e testada — duelos
-1x1 reais entre dois usuários do Discord, com rating ELO e recompensa em
-coins. Fases 2 a 7 completas (carreira, competições, economia com
-salário/transferências, cartas colecionáveis). A integração real com
+Estado atual: **Fase 9 — Global** implementada e testada — ranking global
+ao vivo, recordes mundiais (Hall da Fama) e rivalidades cabeça-a-cabeça
+entre jogadores. Rollover de temporada fica adiado (ver
+`docs/RISK_REGISTER.md`, risco #33). Fases 2 a 8 completas (carreira,
+competições, economia com salário/transferências, cartas colecionáveis,
+duelos multiplayer com rating ELO). A integração real com
 Discord e Postgres ainda não foi validada neste ambiente (sem
 credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa
 em cada fase, e `docs/adr/0001-stack-and-architecture.md` para as
@@ -36,6 +38,9 @@ decisões de arquitetura.
 | `/duelo-desafiar` | Desafia outro usuário do Discord para um duelo 1x1 |
 | `/duelo-responder` | Aceita ou recusa um desafio recebido — se aceitar, o duelo é simulado na hora |
 | `/duelos` | Mostra seus duelos recentes (enviados e recebidos) |
+| `/ranking` | Mostra o ranking global de jogadores por rating (ELO) ou overall |
+| `/recordes` | Mostra o Hall da Fama — os atuais recordes mundiais do jogo |
+| `/rivalidade` | Mostra o histórico de confrontos (vitórias/derrotas) contra outro jogador |
 
 ## Stack
 

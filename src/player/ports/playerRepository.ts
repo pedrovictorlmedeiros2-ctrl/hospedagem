@@ -115,9 +115,15 @@ export interface PlayerAttributesPatch {
  * a UX shortcut for a friendlier error message, never the actual safety
  * net.
  */
+export type RankingMetric = "GLOBAL_RATING" | "OVERALL";
+
 export interface PlayerRepository {
   create(input: NewPlayerRecord): Promise<PlayerRecord>;
   findByUserId(userId: string): Promise<PlayerRecord | null>;
+  /** Looks up by the player's own id (not the owning user's id) — needed wherever another player's identity must be resolved, e.g. a Record's holderPlayerId. */
+  findById(playerId: string): Promise<PlayerRecord | null>;
   update(userId: string, patch: PlayerProfilePatch): Promise<PlayerRecord>;
   updateAttributes(userId: string, patch: PlayerAttributesPatch): Promise<PlayerRecord>;
+  /** Highest-first. Computed live, not cached — see global/services/viewRanking.ts. */
+  listTopPlayers(metric: RankingMetric, limit: number): Promise<PlayerRecord[]>;
 }

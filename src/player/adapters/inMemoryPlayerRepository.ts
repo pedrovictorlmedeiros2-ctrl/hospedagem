@@ -6,6 +6,7 @@ import type {
   PlayerProfilePatch,
   PlayerRecord,
   PlayerRepository,
+  RankingMetric,
 } from "../ports/playerRepository.js";
 
 /**
@@ -52,6 +53,13 @@ export class InMemoryPlayerRepository implements PlayerRepository {
     return this.byUserId.get(userId) ?? null;
   }
 
+  async findById(playerId: string): Promise<PlayerRecord | null> {
+    for (const record of this.byUserId.values()) {
+      if (record.id === playerId) return record;
+    }
+    return null;
+  }
+
   async update(userId: string, patch: PlayerProfilePatch): Promise<PlayerRecord> {
     const existing = this.byUserId.get(userId);
     if (!existing) {
@@ -72,5 +80,10 @@ export class InMemoryPlayerRepository implements PlayerRepository {
     const updated: PlayerRecord = { ...existing, ...patch, updatedAt: new Date() };
     this.byUserId.set(userId, updated);
     return updated;
+  }
+
+  async listTopPlayers(metric: RankingMetric, limit: number): Promise<PlayerRecord[]> {
+    const field = metric === "GLOBAL_RATING" ? "globalRating" : "overall";
+    return [...this.byUserId.values()].sort((a, b) => b[field] - a[field]).slice(0, limit);
   }
 }

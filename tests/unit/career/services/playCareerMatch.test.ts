@@ -6,6 +6,7 @@ import { nextCareerStage } from "../../../../src/career/domain/progression.js";
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
 import { InMemoryMarketRepository } from "../../../../src/economy/adapters/inMemoryMarketRepository.js";
+import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
@@ -27,6 +28,7 @@ function makeDeps() {
     matchRepository: new InMemoryMatchRepository(),
     walletRepository: new InMemoryWalletRepository(),
     marketRepository: new InMemoryMarketRepository(),
+    recordRepository: new InMemoryRecordRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -70,6 +72,39 @@ describe("playCareerMatch", () => {
     expect(match.salaryPaid).toBeGreaterThan(0);
     const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
     expect(wallet.coins).toBe(BigInt(match.coinsEarned + match.salaryPaid));
+  });
+
+  it("recognizes a new MOST_GOALS_SEASON world record the first time the real player scores", async () => {
+    // "goal-search-2" was found by brute-forcing seeds through this exact
+    // service until one produced a goal for the real player (same
+    // technique as the injury seed below) — deterministic, not
+    // statistical.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    const match = await playCareerMatch(deps, {
+      discordId: "discord-1",
+      now: new Date("2026-08-14T00:00:00Z"),
+      seed: "goal-search-2",
+    });
+
+    expect(match.recordsBroken).toContain("MOST_GOALS_SEASON");
+  });
+
+  it("does not credit a 'record' for zero goals on a goalless match", async () => {
+    // "goal-search-0" is one of the seeds the brute-force above rejected
+    // before landing on "goal-search-2" — confirmed goalless for the real
+    // player by construction.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    const match = await playCareerMatch(deps, {
+      discordId: "discord-1",
+      now: new Date("2026-08-14T00:00:00Z"),
+      seed: "goal-search-0",
+    });
+
+    expect(match.recordsBroken).not.toContain("MOST_GOALS_SEASON");
   });
 
   it("emits MATCH_STARTED and MATCH_FINISHED", async () => {

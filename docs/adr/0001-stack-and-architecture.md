@@ -446,6 +446,89 @@ Decisões de arquitetura:
   produto que merece dados reais de uso antes de ser imposta como regra
   rígida.
 
+## Adenda (Fase 9) — Global: ranking ao vivo, recordes append-only, rivalidades canonicalizadas; temporadas adiadas
+
+`src/global/` entra como um novo contexto hexagonal, mas ao contrário de
+toda fase anterior ele não tem um "fluxo principal" próprio — ele lê e
+reage a eventos de OUTROS contextos (`career/`, `multiplayer/`).
+
+Decisão de escopo (registrada primeiro, porque moldou o resto): o pedido
+original de Fase 9 é "top global, recordes, rivalidades, Hall of Fame,
+temporadas". Investigando o código antes de implementar, encontrei que
+`getOrCreateActiveSeason` (`career/adapters/prismaCareerRepository.ts`) é
+hardcoded para a temporada 1, e `leagueNameFor` (`career/services/
+ensureLeagueTeams.ts`) nomeia a liga só pela nacionalidade, sem incluir o
+número da temporada. Ou seja: rollover de temporada é uma feature grande,
+separada, e hoje **inalcançável** — não existe nenhum caminho no código
+atual que leve a uma temporada 2. Implementar um rollover sem também
+resolver o `leagueNameFor` (que faria a liga da temporada 2 colidir com a
+da temporada 1, mesmo nome) não teria nenhum benefício funcional, e nada
+disso seria validável de ponta a ponta neste ambiente (sem banco real, sem
+como avançar pra temporada 2 e observar o resultado). Decisão: implementar
+ranking/recordes/rivalidades por completo — o núcleo concreto e alcançável
+de "Global" — e documentar o gap de `leagueNameFor`/rollover como risco
+específico e acionável (ver RISK_REGISTER.md), em vez de entregar uma
+versão rasa de tudo. Mesmo princípio já usado nas Fases 3 e 8 de recusar
+escopo que não pode ser provado no ambiente atual.
+
+Decisões de arquitetura:
+
+- **Ranking (`/ranking`) é computado ao vivo a cada chamada, sem tabela de
+  snapshot.** `PlayerRepository` ganhou `listTopPlayers(metric, limit)`
+  (ORDER BY + LIMIT direto no Prisma / sort em memória no fake) em vez de
+  um `RankingSnapshot` persistido e recalculado por job. Com a escala atual
+  (sem tráfego real), uma query ordenada é instantânea e sempre correta;
+  um snapshot introduziria staleness e um job de recorrência que nada
+  ainda justifica — mesmo raciocínio do Risco #7 ("não adicionar
+  infraestrutura sem dados reais") já aplicado ao matchmaking da Fase 8.
+- **`Record` é append-only por desenho do schema — não tem unique
+  constraint em `category` sozinho.** Cada recorde quebrado grava uma
+  linha nova em vez de fazer update na existente, preservando o histórico
+  completo de quem já foi dono do recorde. `RecordRepository.
+  getCurrentRecord` lê a linha mais recente por `achievedAt`;
+  `setRecord` nunca faz update, só create. `checkAndUpdateRecord`
+  (`global/services/checkAndUpdateRecord.ts`) é check-then-act, não
+  transacional — mesma categoria de risco de corrida já aceita em
+  `getOrCreateSeasonLeague` (Fase 5): numa corrida real entre dois eventos
+  simultâneos batendo o mesmo recorde, o pior caso é uma linha de
+  histórico a mais/perdida, nunca um valor corrompido.
+- **`Rivalry.playerAId`/`playerBId` tem `@@unique([playerAId, playerBId])`,
+  que é direcional** — sem canonicalização, o mesmo par de jogadores
+  poderia acabar em duas linhas diferentes dependendo de quem desafiou
+  quem primeiro, fragmentando o histórico. `canonicalizeRivalryPair`
+  (`global/domain/rivalry.ts`) ordena os dois ids lexicograficamente antes
+  de toda leitura/escrita, garantindo uma única linha por par
+  independente da direção do confronto.
+- **Dois recordes no lançamento: `HIGHEST_GLOBAL_RATING` (checado em
+  `respondToDuel`, após a atualização de ELO) e `MOST_GOALS_SEASON`
+  (checado em `playCareerMatch`, guardado por `goals > 0` para não
+  registrar "recorde de 0 gols" na primeira partida de carreira de
+  qualquer jogador do mundo).** Outras categorias (mais assistências,
+  melhor sequência de vitórias, etc.) ficam para quando houver sinal real
+  de quais métricas os jogadores acompanham.
+- **Ordem em `respondToDuel`: a transição guardada do duelo (PENDING →
+  FINISHED, trava já estabelecida na Fase 8) continua vindo antes das
+  atualizações de rating/recorde/rivalidade.** Mesmo motivo documentado na
+  adenda da Fase 8 — nenhuma dessas escritas tem idempotência própria, então
+  o ponto de trava tem que vir primeiro para que um retry pós-crash nunca
+  reaplique ELO, recorde ou histórico de confronto uma segunda vez.
+- **`PlayerRepository` ganhou `findById(playerId)`** (só existia
+  `findByUserId`). Necessário porque `Record.holderPlayerId` e
+  `Rivalry.playerAId/playerBId` guardam ids de `Player`, não de `User` —
+  exibir o apelido do dono de um recorde exige resolver por esse id
+  diretamente, sem passar por um Discord id.
+- **Hall of Fame (`/recordes`) é a listagem de `listCurrentRecords()`, sem
+  UI separada de "linha do tempo" do histórico.** O histórico completo já
+  existe no banco (nada foi descartado), só não tem uma superfície de
+  Discord dedicada ainda — decisão de escopo, não lacuna técnica.
+- **Sistema de conquistas (`Achievement`/`UserAchievement`, mencionado no
+  prompt mestre) não foi implementado nesta fase.** Ranking/recordes/
+  rivalidades já cobrem a parte "competitiva" de Global; conquistas são um
+  sistema de progressão independente (definições de conquista, gatilhos de
+  desbloqueio, notificação) que merece seu próprio ciclo ANALISE→PLANEJE em
+  vez de ser anexado apressadamente aqui. Registrado no RISK_REGISTER.md
+  como item pendente e explícito, não descoberto tarde.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

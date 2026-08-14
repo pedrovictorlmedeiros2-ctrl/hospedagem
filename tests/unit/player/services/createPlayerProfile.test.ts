@@ -109,11 +109,13 @@ describe("createPlayerProfile", () => {
     const deps = makeDeps();
     const unstableRepository: PlayerRepository = {
       findByUserId: () => Promise.resolve(null),
+      findById: (playerId) => deps.playerRepository.findById(playerId),
       create: (_input: NewPlayerRecord): Promise<PlayerRecord> =>
         Promise.reject(new Error("ECONNREFUSED: database unavailable")),
       update: (userId: string, patch) => deps.playerRepository.update(userId, patch),
       updateAttributes: (userId: string, patch) =>
         deps.playerRepository.updateAttributes(userId, patch),
+      listTopPlayers: (metric, limit) => deps.playerRepository.listTopPlayers(metric, limit),
     };
 
     await expect(
