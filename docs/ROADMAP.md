@@ -909,3 +909,66 @@ certo, WORLD_RECORD pro lado que realmente bateu o recorde), `openPack`
   conquista hoje não paga coins nem dá cartas, é puramente de progresso/
   vaidade. Adicionar recompensa é uma extensão pequena quando houver
   justificativa de produto.
+
+## Revisão de segurança/concorrência da economia (follow-up)
+
+Pedido explícito do usuário depois do follow-up de Conquistas: revisar
+o codebase inteiro atrás de bugs e, especificamente, formas de "quebrar
+a economia" via corrida. Não é uma nova feature — é uma auditoria +
+correção, seguindo o mesmo ciclo ANALISE→PLANEJE→IMPLEMENTE→TESTE já
+usado em toda fase anterior, desta vez aplicado a código já existente
+em vez de código novo.
+
+**Metodologia:** auditoria de todo ponto de construção de
+`idempotencyKey` no codebase; scripts throwaway (`npx tsx`, apagados
+depois de extrair o achado) disparando `Promise.all`/`Promise.allSettled`
+contra os adapters in-memory pra confirmar ou descartar cada suspeita
+empiricamente, em vez de só por leitura de código. `respondToDuel`
+(Fase 8) serviu de controle positivo — sua transição de estado guardada
+PENDING→FINISHED foi reconfirmada segura sob corrida real, e virou o
+modelo de referência ("claim atômico é sempre a última porta antes da
+mutação irreversível") pro resto da auditoria.
+
+**3 races reais confirmadas e corrigidas** (detalhe completo nos Riscos
+#45–47 em `docs/RISK_REGISTER.md`, decisão de design na adenda
+correspondente do ADR 0001):
+
+1. **`MatchRepository.persistMatchResult`** sem nenhuma proteção de
+   idempotência em `existingMatchId` — a mais severa, porque é a
+   fronteira de integridade mais central do produto (resultado de
+   partida) e tinha MENOS proteção que qualquer outro caminho de
+   escrita do sistema. Duas chamadas concorrentes de `/jogar-carreira`
+   pra mesma rodada triplicavam `PlayerSeasonStat`, abrindo caminho pra
+   promoção de estágio de carreira ilegítima.
+2. **Bônus de assinatura de transferência** (`acceptTransferOffer`) —
+   a `idempotencyKey` do bônus é escopada por clube de destino, então
+   duas transferências concorrentes pra clubes DIFERENTES driblavam o
+   cooldown de 30 dias inteiro e pagavam bônus duplicado (confirmado
+   empiricamente: 2x o bônus numa corrida de teste).
+3. **Cooldown de treino** (`trainPlayer`) — mesmo formato de race
+   (check-then-act com `await`s no meio), sessões de treino duplicadas
+   dentro da janela de 20h.
+
+**Correção comum às três:** um claim atômico (compare-and-swap via
+`UPDATE ... WHERE campo IS NULL OR <= cutoff`, que o lock de linha do
+Postgres serializa) chamado como a ÚLTIMA porta antes da mutação
+irreversível — nunca a primeira, porque claim-antes-de-checar
+desperdiçaria o cooldown do jogador numa tentativa que falhou por outro
+motivo (estamina baixa, saldo insuficiente, lesão ativa). Dois campos
+novos (`Career.lastTransferClaimAt`, `Player.lastTrainingClaimAt`),
+adicionados na mesma migration inicial — ainda não aplicada contra um
+Postgres real neste ambiente.
+
+**Um quarto achado, não corrigido** (Risco #48): `grantMatchReward`
+sempre reporta `amount` no valor recém-calculado mesmo numa chamada
+deduplicada — puramente cosmético (o saldo real da carteira está
+protegido), priorizado abaixo dos três achados de corrupção de estado.
+
+**O que foi validado de verdade:** 3 testes de regressão novos (372 no
+total) convertendo cada script throwaway num cenário `Promise.allSettled`
+permanente em vitest (`playCareerMatch.test.ts`,
+`acceptTransferOffer.test.ts`, `trainPlayer.test.ts`), confirmando não só
+que a chamada perdedora é rejeitada, mas que o estado final (saldo de
+carteira, `PlayerSeasonStat`, atributos do jogador) reflete exatamente
+UMA operação bem-sucedida. `npx tsc --noEmit`, `npx eslint .`, `npx
+vitest run` (372 passando) e `npm run build` — todos limpos.

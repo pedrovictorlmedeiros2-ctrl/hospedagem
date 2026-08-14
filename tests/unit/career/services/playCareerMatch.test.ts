@@ -349,4 +349,46 @@ describe("playCareerMatch", () => {
 
     expect(match.achievementsUnlocked).toContain("FIRST_WIN");
   });
+
+  it("security: concurrent calls for the same fixture do not triple-count the season aggregate", async () => {
+    // Regression for a race: MatchRepository.persistMatchResult used to
+    // have NO idempotency guard on existingMatchId — every call
+    // unconditionally incremented PlayerSeasonStat. Two overlapping
+    // /jogar-carreira requests for the same fixture (e.g. a Discord retry)
+    // could each fold the same result in again, fast-tracking career-stage
+    // progression. The fix makes both adapters idempotent by existingMatchId.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+    const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const results = await Promise.allSettled([
+      playCareerMatch(deps, { discordId: "discord-1", now }),
+      playCareerMatch(deps, { discordId: "discord-1", now }),
+      playCareerMatch(deps, { discordId: "discord-1", now }),
+    ]);
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+
+    expect(deps.matchRepository.recorded).toHaveLength(1);
+
+    const player = await deps.playerRepository.findByUserId(user.id);
+    if (!player) throw new Error("test setup failed: no player");
+    const seasonId = deps.matchRepository.recorded[0]?.input.seasonId;
+    if (!seasonId) throw new Error("test setup failed: no season id recorded");
+    const seasonStat = await deps.matchRepository.getPlayerSeasonStat(player.id, seasonId);
+    expect(seasonStat?.matches).toBe(1);
+
+    // Exactly one match's worth of reward + salary landed, not three. The
+    // three calls simulate the identical deterministic match (same seed,
+    // same squads), so coinsEarned is reported identically by all of
+    // them; salaryPaid is 0 for whichever call(s) lost the wallet
+    // idempotency race, so the real value is whichever is nonzero.
+    const fulfilledValues = (results as PromiseFulfilledResult<Awaited<ReturnType<typeof playCareerMatch>>>[]).map(
+      (r) => r.value,
+    );
+    const coinsEarned = fulfilledValues[0]!.coinsEarned;
+    const salaryPaid = Math.max(...fulfilledValues.map((v) => v.salaryPaid));
+    const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
+    expect(wallet.coins).toBe(BigInt(coinsEarned + salaryPaid));
+  });
 });

@@ -76,6 +76,10 @@ export async function trainPlayer(
 
   validateFocusForPosition(input.focus, player.position);
 
+  // Fast, non-authoritative fail-fast: cheap read-based check so the
+  // common (non-racing) case gets a clean cooldown error before any other
+  // work happens. NOT the safety net — see the atomic claim below, which
+  // is what actually prevents two concurrent sessions from both landing.
   const lastTrainingAt = await deps.trainingRepository.getLastTrainingAt(player.id);
   if (!canTrainNow(lastTrainingAt, now)) {
     const elapsedHours = lastTrainingAt
@@ -94,7 +98,7 @@ export async function trainPlayer(
     // concurrent/retried requests for the same intensive session on the
     // same day resolve to the same idempotencyKey, so the wallet charges
     // exactly once (see WalletRepository.applyTransaction) even though the
-    // cooldown check above hasn't recorded this session yet.
+    // cooldown claim below hasn't happened yet.
     const dayBucket = now.toISOString().slice(0, 10);
     await deps.walletRepository.applyTransaction({
       userId: user.id,
@@ -104,6 +108,20 @@ export async function trainPlayer(
       reason: "INTENSIVE_TRAINING",
       idempotencyKey: `training-intensive:${player.id}:${dayBucket}`,
     });
+  }
+
+  // The actual race-safe gate: an atomic compare-and-swap on
+  // Player.lastTrainingClaimAt. Placed after every check that can
+  // legitimately fail on its own (focus, stamina, funds) and right before
+  // the irreversible attribute/log writes below — so of any number of
+  // concurrent trainPlayer calls for this player, exactly one can ever
+  // reach updateAttributes/recordTraining within a cooldown window.
+  const claim = await deps.playerRepository.tryClaimTrainingCooldown(player.id, now, TRAINING_COOLDOWN_HOURS);
+  if (!claim.claimed) {
+    const elapsedHours = claim.lastClaimAt
+      ? (now.getTime() - claim.lastClaimAt.getTime()) / (1000 * 60 * 60)
+      : 0;
+    throw new TrainingCooldownError(TRAINING_COOLDOWN_HOURS - elapsedHours);
   }
 
   const field = attributeFieldFor(input.focus);

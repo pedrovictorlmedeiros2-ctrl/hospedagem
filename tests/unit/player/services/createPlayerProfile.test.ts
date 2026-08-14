@@ -116,6 +116,8 @@ describe("createPlayerProfile", () => {
       updateAttributes: (userId: string, patch) =>
         deps.playerRepository.updateAttributes(userId, patch),
       listTopPlayers: (metric, limit) => deps.playerRepository.listTopPlayers(metric, limit),
+      tryClaimTrainingCooldown: (playerId, now, cooldownHours) =>
+        deps.playerRepository.tryClaimTrainingCooldown(playerId, now, cooldownHours),
     };
 
     await expect(

@@ -33,6 +33,25 @@ export class InMemoryMatchRepository implements MatchRepository {
       );
     }
 
+    // Idempotency guard: a concurrent or retried call carrying the same
+    // `existingMatchId` (e.g. two overlapping /jogar-carreira requests
+    // racing on the same fixture) must not fold the same result into the
+    // season aggregate twice. No `await` happens between this check and
+    // the writes below, so on Node's single-threaded event loop this is
+    // atomic per call — the same reasoning InMemoryWalletRepository's doc
+    // comment relies on for idempotencyKey.
+    if (input.existingMatchId) {
+      const already = this.recorded.find((entry) => entry.matchId === input.existingMatchId);
+      if (already) {
+        const key = `${realPlayer.playerId}:${input.seasonId}`;
+        const seasonStat = this.seasonStats.get(key);
+        if (!seasonStat) {
+          throw new Error("Internal error: match already recorded but season stat is missing");
+        }
+        return { matchId: input.existingMatchId, seasonStat };
+      }
+    }
+
     const matchId = input.existingMatchId ?? randomUUID();
     this.recorded.push({ matchId, input });
 

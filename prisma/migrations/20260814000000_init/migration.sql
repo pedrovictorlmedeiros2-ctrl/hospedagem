@@ -103,6 +103,7 @@ CREATE TABLE "Player" (
     "form" INTEGER NOT NULL DEFAULT 50,
     "globalRating" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "stamina" INTEGER NOT NULL DEFAULT 100,
+    "lastTrainingClaimAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -116,6 +117,7 @@ CREATE TABLE "Career" (
     "stage" "CareerStage" NOT NULL DEFAULT 'BASE',
     "currentSeasonNumber" INTEGER NOT NULL DEFAULT 1,
     "currentClubId" TEXT,
+    "lastTransferClaimAt" TIMESTAMP(3),
     "debutAt" TIMESTAMP(3),
     "retiredAt" TIMESTAMP(3),
     "isRetired" BOOLEAN NOT NULL DEFAULT false,

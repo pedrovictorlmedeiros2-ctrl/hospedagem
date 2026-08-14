@@ -4,6 +4,7 @@ import { seasonNameFor } from "../domain/season.js";
 import type {
   CareerRecord,
   CareerRepository,
+  ClaimCooldownResult,
   ClubRecord,
   CreateCareerInput,
   EnsureOnRosterInput,
@@ -24,6 +25,7 @@ export class InMemoryCareerRepository implements CareerRepository {
   private readonly rosterByTeam = new Map<string, Set<string>>(); // teamId -> active playerIds
   private readonly careersByPlayerId = new Map<string, CareerRecord>();
   private readonly injuriesByPlayerId = new Map<string, RecordInjuryInput[]>();
+  private readonly transferClaimsByPlayerId = new Map<string, Date>();
 
   async getOrCreateSeason(number: number, _now: Date): Promise<SeasonRecord> {
     const existing = this.seasonsByNumber.get(number);
@@ -150,5 +152,17 @@ export class InMemoryCareerRepository implements CareerRepository {
   async hasActiveInjury(playerId: string, now: Date): Promise<boolean> {
     const injuries = this.injuriesByPlayerId.get(playerId) ?? [];
     return injuries.some((injury) => injury.expectedReturnAt.getTime() > now.getTime());
+  }
+
+  /** No `await` between the check and the write, so this is atomic per call on Node's single-threaded event loop — same reasoning as InMemoryWalletRepository.applyTransaction. */
+  async tryClaimTransferCooldown(playerId: string, now: Date, minDaysBetween: number): Promise<ClaimCooldownResult> {
+    const lastClaimAt = this.transferClaimsByPlayerId.get(playerId) ?? null;
+    const cooldownMs = minDaysBetween * 24 * 60 * 60 * 1000;
+    const eligible = !lastClaimAt || now.getTime() - lastClaimAt.getTime() >= cooldownMs;
+    if (!eligible) {
+      return { claimed: false, lastClaimAt };
+    }
+    this.transferClaimsByPlayerId.set(playerId, now);
+    return { claimed: true, lastClaimAt: null };
   }
 }

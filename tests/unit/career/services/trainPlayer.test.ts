@@ -136,4 +136,35 @@ describe("trainPlayer", () => {
       trainPlayer(deps, { discordId: "discord-1", focus: "SHOOTING", intensive: true }),
     ).rejects.toThrow(InsufficientFundsError);
   });
+
+  it("security: concurrent training sessions cannot double-train within the cooldown", async () => {
+    // Regression for a race: the cooldown check (getLastTrainingAt) used to
+    // run well before the writes (updateAttributes, recordTraining), with
+    // several `await`s in between — two concurrent trainPlayer calls could
+    // both pass the check and both land. The fix adds an atomic claim
+    // (PlayerRepository.tryClaimTrainingCooldown) so only one ever wins.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const results = await Promise.allSettled([
+      trainPlayer(deps, { discordId: "discord-1", focus: "SHOOTING", now }),
+      trainPlayer(deps, { discordId: "discord-1", focus: "PASSING", now }),
+      trainPlayer(deps, { discordId: "discord-1", focus: "PACE", now }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(2);
+    for (const r of rejected) {
+      expect(r.reason).toBeInstanceOf(TrainingCooldownError);
+    }
+
+    const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
+    const player = await deps.playerRepository.findByUserId(user.id);
+    const movedAttributes = [player!.shooting, player!.passing, player!.pace].filter((value) => value !== 50);
+    expect(movedAttributes).toHaveLength(1);
+    expect(player!.stamina).toBe(90); // stamina cost deducted exactly once, not three times
+  });
 });

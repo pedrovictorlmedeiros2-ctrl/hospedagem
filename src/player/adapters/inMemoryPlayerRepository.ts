@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DuplicateProfileError, ProfileNotFoundError } from "../domain/errors.js";
 import type {
+  ClaimCooldownResult,
   NewPlayerRecord,
   PlayerAttributesPatch,
   PlayerProfilePatch,
@@ -22,6 +23,7 @@ import type {
  */
 export class InMemoryPlayerRepository implements PlayerRepository {
   private readonly byUserId = new Map<string, PlayerRecord>();
+  private readonly trainingClaimsByPlayerId = new Map<string, Date>();
 
   async create(input: NewPlayerRecord): Promise<PlayerRecord> {
     if (this.byUserId.has(input.userId)) {
@@ -85,5 +87,17 @@ export class InMemoryPlayerRepository implements PlayerRepository {
   async listTopPlayers(metric: RankingMetric, limit: number): Promise<PlayerRecord[]> {
     const field = metric === "GLOBAL_RATING" ? "globalRating" : "overall";
     return [...this.byUserId.values()].sort((a, b) => b[field] - a[field]).slice(0, limit);
+  }
+
+  /** No `await` between the check and the write, so this is atomic per call on Node's single-threaded event loop — same reasoning as InMemoryWalletRepository.applyTransaction. */
+  async tryClaimTrainingCooldown(playerId: string, now: Date, cooldownHours: number): Promise<ClaimCooldownResult> {
+    const lastClaimAt = this.trainingClaimsByPlayerId.get(playerId) ?? null;
+    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+    const eligible = !lastClaimAt || now.getTime() - lastClaimAt.getTime() >= cooldownMs;
+    if (!eligible) {
+      return { claimed: false, lastClaimAt };
+    }
+    this.trainingClaimsByPlayerId.set(playerId, now);
+    return { claimed: true, lastClaimAt: null };
   }
 }

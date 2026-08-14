@@ -3,6 +3,7 @@ import { seasonNameFor } from "../domain/season.js";
 import type {
   CareerRecord,
   CareerRepository,
+  ClaimCooldownResult,
   ClubRecord,
   CreateCareerInput,
   EnsureOnRosterInput,
@@ -203,6 +204,25 @@ export class PrismaCareerRepository implements CareerRepository {
       where: { playerId, recoveredAt: null, expectedReturnAt: { gt: now } },
     });
     return injury !== null;
+  }
+
+  /**
+   * The compare-and-swap itself: a single conditional UPDATE that only
+   * matches (and only then overwrites) a row whose claim is unset or
+   * already past the cooldown window. Postgres row-level locking
+   * serializes concurrent UPDATEs to the same Career row, so of any
+   * number of simultaneous callers, exactly one sees `count === 1`.
+   */
+  async tryClaimTransferCooldown(playerId: string, now: Date, minDaysBetween: number): Promise<ClaimCooldownResult> {
+    const cutoff = new Date(now.getTime() - minDaysBetween * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.career.updateMany({
+      where: { playerId, OR: [{ lastTransferClaimAt: null }, { lastTransferClaimAt: { lte: cutoff } }] },
+      data: { lastTransferClaimAt: now },
+    });
+    if (result.count === 1) return { claimed: true, lastClaimAt: null };
+
+    const career = await this.prisma.career.findUnique({ where: { playerId }, select: { lastTransferClaimAt: true } });
+    return { claimed: false, lastClaimAt: career?.lastTransferClaimAt ?? null };
   }
 
   private toDomain(career: {

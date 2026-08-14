@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { DuplicateProfileError, ProfileNotFoundError } from "../domain/errors.js";
 import type {
+  ClaimCooldownResult,
   NewPlayerRecord,
   PlayerAttributesPatch,
   PlayerProfilePatch,
@@ -117,5 +118,25 @@ export class PrismaPlayerRepository implements PlayerRepository {
         ? await this.prisma.player.findMany({ orderBy: { globalRating: "desc" }, take: limit })
         : await this.prisma.player.findMany({ orderBy: { overall: "desc" }, take: limit });
     return rows.map(toDomain);
+  }
+
+  /**
+   * Compare-and-swap: a single conditional UPDATE that only matches (and
+   * only then overwrites) a row whose claim is unset or already past the
+   * cooldown window. Postgres row-level locking serializes concurrent
+   * UPDATEs to the same Player row, so of any number of simultaneous
+   * callers, exactly one sees `count === 1`. Same pattern as
+   * PrismaCareerRepository.tryClaimTransferCooldown.
+   */
+  async tryClaimTrainingCooldown(playerId: string, now: Date, cooldownHours: number): Promise<ClaimCooldownResult> {
+    const cutoff = new Date(now.getTime() - cooldownHours * 60 * 60 * 1000);
+    const result = await this.prisma.player.updateMany({
+      where: { id: playerId, OR: [{ lastTrainingClaimAt: null }, { lastTrainingClaimAt: { lte: cutoff } }] },
+      data: { lastTrainingClaimAt: now },
+    });
+    if (result.count === 1) return { claimed: true, lastClaimAt: null };
+
+    const player = await this.prisma.player.findUnique({ where: { id: playerId }, select: { lastTrainingClaimAt: true } });
+    return { claimed: false, lastClaimAt: player?.lastTrainingClaimAt ?? null };
   }
 }

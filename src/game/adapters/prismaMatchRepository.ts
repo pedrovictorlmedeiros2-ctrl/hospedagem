@@ -1,4 +1,4 @@
-import type { MatchEventType, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type MatchEventType, type PrismaClient } from "@prisma/client";
 import type { SimMatchEventType } from "../domain/types.js";
 import type {
   MatchRepository,
@@ -56,6 +56,65 @@ export class PrismaMatchRepository implements MatchRepository {
       );
     }
 
+    const alreadyPersisted = input.existingMatchId
+      ? await this.findAlreadyPersisted(input.existingMatchId, realPlayer.playerId, input.seasonId)
+      : null;
+    if (alreadyPersisted) return alreadyPersisted;
+
+    try {
+      return await this.writeMatchResult(input, realPlayer, realStat);
+    } catch (error) {
+      // Same idempotency pattern as PrismaWalletRepository.applyTransaction:
+      // a concurrent caller racing on the same fixture (existingMatchId) can
+      // lose the `MatchPlayerStat` unique constraint ([matchId, playerId])
+      // race between the pre-check above and this write. The whole
+      // transaction rolls back automatically; treat it as "already
+      // persisted by the winner" and return that state instead of failing.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        input.existingMatchId
+      ) {
+        const winner = await this.findAlreadyPersisted(input.existingMatchId, realPlayer.playerId, input.seasonId);
+        if (winner) return winner;
+      }
+      throw error;
+    }
+  }
+
+  private async findAlreadyPersisted(
+    matchId: string,
+    playerId: string,
+    seasonId: string,
+  ): Promise<PersistedMatch | null> {
+    const existingStat = await this.prisma.matchPlayerStat.findUnique({
+      where: { matchId_playerId: { matchId, playerId } },
+    });
+    if (!existingStat) return null;
+
+    const seasonStat = await this.prisma.playerSeasonStat.findUnique({
+      where: { playerId_seasonId: { playerId, seasonId } },
+    });
+    if (!seasonStat) {
+      throw new Error("Internal error: match already recorded but season stat is missing");
+    }
+    return {
+      matchId,
+      seasonStat: {
+        matches: seasonStat.matches,
+        goals: seasonStat.goals,
+        assists: seasonStat.assists,
+        avgRating: seasonStat.avgRating,
+      },
+    };
+  }
+
+  private async writeMatchResult(
+    input: PersistMatchResultInput,
+    realPlayer: PersistMatchResultInput["realPlayer"],
+    realStat: PersistMatchResultInput["result"]["playerStats"][number],
+  ): Promise<PersistedMatch> {
+    const { result } = input;
     return this.prisma.$transaction(async (tx) => {
       const matchData = {
         homeTeamId: input.homeTeamId,

@@ -140,4 +140,38 @@ describe("acceptTransferOffer", () => {
       acceptTransferOffer(deps, { discordId: "discord-1", toClubName: second.clubName, now: soonAfter }),
     ).rejects.toThrow(TransferCooldownError);
   });
+
+  it("security: concurrent transfers to DIFFERENT clubs cannot both win the cooldown — exactly one signing bonus is paid", async () => {
+    // Regression for a race: the signing bonus's wallet idempotencyKey is
+    // scoped per-destination-club (transfer-bonus:<playerId>:<clubId>:<day>),
+    // so it alone never stopped two concurrent accepts to two different
+    // rival clubs from both landing within the same 30-day cooldown window.
+    // The fix adds an atomic claim (CareerRepository.tryClaimTransferCooldown)
+    // that only one concurrent caller can ever win, regardless of destination.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+    const now = new Date("2026-08-14T00:00:00Z");
+    const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
+
+    const { offers } = await listTransferOffers(deps, { discordId: "discord-1", now });
+    expect(offers.length).toBeGreaterThanOrEqual(3);
+
+    const results = await Promise.allSettled(
+      offers
+        .slice(0, 3)
+        .map((offer) => acceptTransferOffer(deps, { discordId: "discord-1", toClubName: offer.clubName, now })),
+    );
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(2);
+    for (const r of rejected) {
+      expect(r.reason).toBeInstanceOf(TransferCooldownError);
+    }
+
+    const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
+    const won = fulfilled[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof acceptTransferOffer>>>;
+    expect(wallet.coins).toBe(BigInt(won.value.signingBonus));
+  });
 });

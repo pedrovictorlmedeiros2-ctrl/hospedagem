@@ -237,6 +237,12 @@ model Player {
   globalRating Float @default(0) // ranking metric, distinct from OVR and form
   stamina      Int   @default(100)
 
+  // Atomic cooldown claim (PlayerRepository.tryClaimTrainingCooldown) —
+  // NOT derived from TrainingLog history, which stays purely a record of
+  // completed sessions. See Career.lastTransferClaimAt for the analogous
+  // compare-and-swap on the transfer cooldown.
+  lastTrainingClaimAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -273,6 +279,16 @@ model Career {
 
   currentClubId String?
   currentClub   Club?   @relation(fields: [currentClubId], references: [id])
+
+  // Atomic cooldown claim (CareerRepository.tryClaimTransferCooldown) —
+  // NOT derived from Transfer history. A conditional `UPDATE ... WHERE
+  // lastTransferClaimAt IS NULL OR <= cutoff` is the compare-and-swap:
+  // Postgres serializes concurrent updates to the same row, so exactly
+  // one concurrent caller can ever win the claim within a cooldown
+  // window (see docs/RISK_REGISTER.md). The training-cooldown equivalent
+  // lives on Player instead (see Player.lastTrainingClaimAt) — training
+  // doesn't require a Career to exist.
+  lastTransferClaimAt DateTime?
 
   debutAt    DateTime?
   retiredAt  DateTime?

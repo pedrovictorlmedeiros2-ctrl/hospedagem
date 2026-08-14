@@ -7,17 +7,20 @@ como interface principal.
 Estado atual: as Fases 0 a 11 do roadmap original estão completas
 (discovery, fundação, perfil de jogador, motor de partida, carreira,
 competições, economia, cartas, multiplayer, ranking/recordes/rivalidades
-globais, narrativa via Groq, polish), mais dois follow-ups que fecham os
-últimos riscos em aberto: **rollover automático de temporada** (risco
-#33 — ao esgotar os 12 jogos da liga, `/jogar-carreira` avança a
-carreira pra próxima temporada sozinho) e **conquistas** (risco #35 —
-catálogo fixo de 6 conquistas desbloqueadas em `/jogar-carreira`,
-`/duelo-responder` e `/abrir-pacote`, consultável via `/conquistas`). A
-integração real com Discord e Postgres ainda não foi validada neste
-ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
-"implementado" significa em cada fase, e
-`docs/adr/0001-stack-and-architecture.md` para as decisões de
-arquitetura.
+globais, narrativa via Groq, polish), mais três follow-ups: **rollover
+automático de temporada** (risco #33 — ao esgotar os 12 jogos da liga,
+`/jogar-carreira` avança a carreira pra próxima temporada sozinho),
+**conquistas** (risco #35 — catálogo fixo de 6 conquistas desbloqueadas
+em `/jogar-carreira`, `/duelo-responder` e `/abrir-pacote`, consultável
+via `/conquistas`) e uma **revisão de segurança/concorrência da
+economia** que encontrou e corrigiu 3 race conditions reais (riscos
+#45–47: persistência de partida sem idempotência, bônus de transferência
+e cooldown de treino ambos burláveis por corrida) — ver
+`docs/RISK_REGISTER.md` para o detalhe de cada uma. A integração real
+com Discord e Postgres ainda não foi validada neste ambiente (sem
+credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa
+em cada fase, e `docs/adr/0001-stack-and-architecture.md` para as
+decisões de arquitetura.
 
 ## Comandos do jogo
 

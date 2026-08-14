@@ -117,6 +117,12 @@ export interface PlayerAttributesPatch {
  */
 export type RankingMetric = "GLOBAL_RATING" | "OVERALL";
 
+export interface ClaimCooldownResult {
+  claimed: boolean;
+  /** The cooldown's current start point, for building a "try again in Xh" message. Only meaningful when claimed is false. */
+  lastClaimAt: Date | null;
+}
+
 export interface PlayerRepository {
   create(input: NewPlayerRecord): Promise<PlayerRecord>;
   findByUserId(userId: string): Promise<PlayerRecord | null>;
@@ -126,4 +132,16 @@ export interface PlayerRepository {
   updateAttributes(userId: string, patch: PlayerAttributesPatch): Promise<PlayerRecord>;
   /** Highest-first. Computed live, not cached — see global/services/viewRanking.ts. */
   listTopPlayers(metric: RankingMetric, limit: number): Promise<PlayerRecord[]>;
+  /**
+   * Atomic compare-and-swap: claims the training-cooldown slot for this
+   * player IF (and only if) `now` is at least `cooldownHours` past the
+   * last successful claim, in one indivisible operation — so two
+   * concurrent training attempts can never both win. Must be called as
+   * the LAST gate right before mutating attributes/recording the
+   * session, after every check that can legitimately fail on its own
+   * (focus validity, stamina, insufficient funds for an intensive
+   * session) — claiming and then failing on something else would waste
+   * the player's cooldown slot for nothing. See career/services/trainPlayer.ts.
+   */
+  tryClaimTrainingCooldown(playerId: string, now: Date, cooldownHours: number): Promise<ClaimCooldownResult>;
 }

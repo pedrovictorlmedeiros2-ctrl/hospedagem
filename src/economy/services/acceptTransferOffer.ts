@@ -52,6 +52,11 @@ export async function acceptTransferOffer(
     throw new ValidationError("Não é possível assinar uma transferência enquanto estiver machucado.");
   }
 
+  // Fast, non-authoritative fail-fast: cheap read-based check so the
+  // common (non-racing) case gets a clean cooldown error before any other
+  // work happens. NOT the safety net — see the atomic claim below, which
+  // is what actually prevents two concurrent transfers (even to
+  // *different* destination clubs) from both landing.
   const recentTransfers = await deps.marketRepository.listRecentTransfers(player.id, 1);
   const lastTransferAt = recentTransfers[0]?.announcedAt ?? null;
   if (!canTransferNow(lastTransferAt, now)) {
@@ -76,6 +81,20 @@ export async function acceptTransferOffer(
   });
   if (!offer.available) {
     throw new ValidationError(`${destination.club.name} não tem uma proposta por você hoje. Confira /propostas.`);
+  }
+
+  // The actual race-safe gate: an atomic compare-and-swap on
+  // Career.lastTransferClaimAt. Placed after every check that can
+  // legitimately fail on its own (injury, destination validity, offer
+  // availability) and right before the irreversible roster/contract
+  // mutations below — so of any number of concurrent acceptTransferOffer
+  // calls for this player, exactly one can ever win, even when they
+  // target different destination clubs (the wallet bonus's idempotencyKey
+  // alone is per-destination and would NOT have caught that case).
+  const claim = await deps.careerRepository.tryClaimTransferCooldown(player.id, now, MIN_DAYS_BETWEEN_TRANSFERS);
+  if (!claim.claimed) {
+    const daysSince = claim.lastClaimAt ? (now.getTime() - claim.lastClaimAt.getTime()) / (1000 * 60 * 60 * 24) : 0;
+    throw new TransferCooldownError(MIN_DAYS_BETWEEN_TRANSFERS - daysSince);
   }
 
   const oldContract = await deps.marketRepository.getActiveContract(player.id);

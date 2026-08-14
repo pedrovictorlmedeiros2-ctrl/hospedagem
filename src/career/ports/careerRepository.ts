@@ -68,6 +68,12 @@ export interface RecordInjuryInput {
   expectedReturnAt: Date;
 }
 
+export interface ClaimCooldownResult {
+  claimed: boolean;
+  /** The cooldown's current start point, for building a "try again in Xh" message. Only meaningful when claimed is false; null on a fresh claim or a first-ever claim. */
+  lastClaimAt: Date | null;
+}
+
 /**
  * Port for the "career world": seasons, clubs, team rosters and the
  * player's own Career record. Deliberately one cohesive port rather than
@@ -104,4 +110,21 @@ export interface CareerRepository {
   recordInjury(input: RecordInjuryInput): Promise<void>;
   /** True if the player has a recorded injury whose expected recovery date is still in the future. */
   hasActiveInjury(playerId: string, now: Date): Promise<boolean>;
+
+  /**
+   * Atomic compare-and-swap: claims the transfer-cooldown slot for this
+   * player IF (and only if) `now` is at least `minDaysBetween` days past
+   * the last successful claim, in one indivisible operation — so two
+   * concurrent transfer attempts (even to *different* destination clubs)
+   * can never both win. Deliberately a separate claim from the wallet's
+   * signing-bonus idempotencyKey — that key is scoped per-destination-club
+   * and would NOT by itself stop two concurrent transfers to different
+   * clubs from both succeeding within the same cooldown window. Must be
+   * called as the LAST gate right before the irreversible roster/contract
+   * mutations in acceptTransferOffer.ts, after every check that can
+   * legitimately fail on its own (active injury, offer availability) —
+   * claiming and then failing on something else would waste the player's
+   * cooldown slot for nothing.
+   */
+  tryClaimTransferCooldown(playerId: string, now: Date, minDaysBetween: number): Promise<ClaimCooldownResult>;
 }
