@@ -1,3 +1,4 @@
+import Groq from "groq-sdk";
 import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";
 import { PrismaTrainingRepository } from "./career/adapters/prismaTrainingRepository.js";
 import { PrismaCardRepository } from "./cards/adapters/prismaCardRepository.js";
@@ -10,8 +11,15 @@ import { PrismaWalletRepository } from "./economy/adapters/prismaWalletRepositor
 import { PrismaMatchRepository } from "./game/adapters/prismaMatchRepository.js";
 import { PrismaRecordRepository } from "./global/adapters/prismaRecordRepository.js";
 import { PrismaRivalryRepository } from "./global/adapters/prismaRivalryRepository.js";
+import type { RecordCategory } from "./global/domain/records.js";
 import { PrismaUserRepository } from "./identity/adapters/prismaUserRepository.js";
 import { PrismaDuelRepository } from "./multiplayer/adapters/prismaDuelRepository.js";
+import { FallbackNarrativeGenerator } from "./narrative/adapters/fallbackNarrativeGenerator.js";
+import { GroqNarrativeGenerator } from "./narrative/adapters/groqNarrativeGenerator.js";
+import { PrismaNewsRepository } from "./narrative/adapters/prismaNewsRepository.js";
+import { TemplateNarrativeGenerator } from "./narrative/adapters/templateNarrativeGenerator.js";
+import type { NarrativeGenerator } from "./narrative/ports/narrativeGenerator.js";
+import { publishRecordNews } from "./narrative/services/publishRecordNews.js";
 import { PrismaPlayerRepository } from "./player/adapters/prismaPlayerRepository.js";
 import { EventBus } from "./shared/eventBus.js";
 import { createLogger } from "./shared/logger.js";
@@ -33,6 +41,37 @@ async function main() {
   const duelRepository = new PrismaDuelRepository(prisma);
   const recordRepository = new PrismaRecordRepository(prisma);
   const rivalryRepository = new PrismaRivalryRepository(prisma);
+  const newsRepository = new PrismaNewsRepository(prisma);
+
+  // Groq is purely the narrative layer's primary text source — never in
+  // the gameplay-critical path (see ADR 0001, adenda Fase 10). Without a
+  // key, the template fallback IS the generator, not a degraded mode.
+  const templateNarrativeGenerator = new TemplateNarrativeGenerator();
+  const narrativeGenerator: NarrativeGenerator = env.GROQ_API_KEY
+    ? new FallbackNarrativeGenerator(
+        new GroqNarrativeGenerator(new Groq({ apiKey: env.GROQ_API_KEY })),
+        templateNarrativeGenerator,
+        logger,
+      )
+    : templateNarrativeGenerator;
+
+  // Fire-and-forget subscriber: turns a broken world record into a
+  // published News article without ever blocking the match/duel flow that
+  // emitted the event (EventBus never awaits handlers — see
+  // shared/eventBus.ts).
+  events.on("RECORD_BROKEN", async (payload) => {
+    await publishRecordNews(
+      { narrativeGenerator, newsRepository, playerRepository, logger },
+      {
+        category: payload.category as RecordCategory,
+        playerId: payload.playerId,
+        previousHolderId: payload.previousHolderId,
+        previousValue: payload.previousValue,
+        value: payload.value,
+        now: new Date(),
+      },
+    );
+  });
 
   const client = createDiscordClient({
     prisma,
@@ -50,6 +89,8 @@ async function main() {
     duelRepository,
     recordRepository,
     rivalryRepository,
+    narrativeGenerator,
+    newsRepository,
   });
 
   let shuttingDown = false;

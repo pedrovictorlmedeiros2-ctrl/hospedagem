@@ -156,7 +156,7 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     // null-current case treats any value as a new record, which is
     // correct in general but not worth celebrating at zero.
     const goalsCheck = await checkAndUpdateRecord(
-      { recordRepository: deps.recordRepository },
+      { recordRepository: deps.recordRepository, events: deps.events },
       { category: "MOST_GOALS_SEASON", playerId: player.id, value: persisted.seasonStat.goals, now },
     );
     if (goalsCheck.isNewRecord) recordsBroken.push("MOST_GOALS_SEASON");

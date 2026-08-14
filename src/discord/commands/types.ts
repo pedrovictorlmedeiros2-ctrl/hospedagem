@@ -11,6 +11,8 @@ import type { RecordRepository } from "../../global/ports/recordRepository.js";
 import type { RivalryRepository } from "../../global/ports/rivalryRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { DuelRepository } from "../../multiplayer/ports/duelRepository.js";
+import type { NarrativeGenerator } from "../../narrative/ports/narrativeGenerator.js";
+import type { NewsRepository } from "../../narrative/ports/newsRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
 import type { Logger } from "../../shared/logger.js";
@@ -31,6 +33,8 @@ export interface CommandContext {
   duelRepository: DuelRepository;
   recordRepository: RecordRepository;
   rivalryRepository: RivalryRepository;
+  narrativeGenerator: NarrativeGenerator;
+  newsRepository: NewsRepository;
 }
 
 /**

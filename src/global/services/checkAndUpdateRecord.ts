@@ -1,8 +1,10 @@
+import type { EventBus } from "../../shared/eventBus.js";
 import { isNewRecord, type RecordCategory } from "../domain/records.js";
 import type { RecordEntry, RecordRepository } from "../ports/recordRepository.js";
 
 export interface CheckAndUpdateRecordDeps {
   recordRepository: RecordRepository;
+  events: EventBus;
 }
 
 export interface CheckAndUpdateRecordInput {
@@ -44,6 +46,18 @@ export async function checkAndUpdateRecord(
     previousHolderId: current?.holderPlayerId ?? null,
     previousValue: current?.value ?? null,
     achievedAt: input.now,
+  });
+
+  // Fire-and-forget from the caller's perspective — narrative/services/
+  // publishRecordNews.ts subscribes to this asynchronously (see
+  // src/index.ts). A slow or failing LLM call downstream must never delay
+  // or fail the match/duel flow that broke the record in the first place.
+  deps.events.emit("RECORD_BROKEN", {
+    category: input.category,
+    playerId: input.playerId,
+    previousHolderId: record.previousHolderId,
+    previousValue: record.previousValue,
+    value: input.value,
   });
 
   return { isNewRecord: true, record };

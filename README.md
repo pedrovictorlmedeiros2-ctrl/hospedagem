@@ -4,12 +4,13 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 9 — Global** implementada e testada — ranking global
-ao vivo, recordes mundiais (Hall da Fama) e rivalidades cabeça-a-cabeça
-entre jogadores. Rollover de temporada fica adiado (ver
-`docs/RISK_REGISTER.md`, risco #33). Fases 2 a 8 completas (carreira,
-competições, economia com salário/transferências, cartas colecionáveis,
-duelos multiplayer com rating ELO). A integração real com
+Estado atual: **Fase 10 — Groq (narrativa)** implementada e testada —
+notícias de recordes mundiais, conselhos do técnico e entrevistas pós-jogo
+geradas por LLM, com fallback determinístico sempre disponível mesmo sem
+`GROQ_API_KEY`. Fases 2 a 9 completas (carreira, competições, economia com
+salário/transferências, cartas colecionáveis, duelos multiplayer com
+rating ELO, ranking/recordes/rivalidades globais). Rollover de temporada
+segue adiado (ver `docs/RISK_REGISTER.md`, risco #33). A integração real com
 Discord e Postgres ainda não foi validada neste ambiente (sem
 credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa
 em cada fase, e `docs/adr/0001-stack-and-architecture.md` para as
@@ -41,6 +42,9 @@ decisões de arquitetura.
 | `/ranking` | Mostra o ranking global de jogadores por rating (ELO) ou overall |
 | `/recordes` | Mostra o Hall da Fama — os atuais recordes mundiais do jogo |
 | `/rivalidade` | Mostra o histórico de confrontos (vitórias/derrotas) contra outro jogador |
+| `/noticias` | Mostra as últimas notícias do mundo do jogo (hoje: recordes mundiais quebrados) |
+| `/treinador` | Pede um conselho ao técnico sobre o andamento da temporada |
+| `/entrevista pergunta:...` | Faz uma pergunta de entrevista pro seu jogador responder, em primeira pessoa |
 
 ## Stack
 

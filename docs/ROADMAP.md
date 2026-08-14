@@ -16,7 +16,7 @@ briefing original do produto.
 | 7 | Cards (cartas, packs, inventário) | ✅ Implementada e testada — catálogo fixo, sorteio ponderado, abertura à prova de duplicação | `/pacotes`, `/abrir-pacote`, `/colecao`, 20 testes novos (241 no total). Ver seção "O que a Fase 7 entrega" abaixo |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ✅ Implementada e testada — desafio direto, duelo simulado com o motor real, rating ELO, recompensa em coins | `/duelo-desafiar`, `/duelo-responder`, `/duelos`, 29 testes novos (270 no total). Ver seção "O que a Fase 8 entrega" abaixo |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | 🟡 Ranking/recordes/rivalidades implementados e testados; rollover de temporada adiado (inalcançável no código atual, ver adenda) | `/ranking`, `/recordes`, `/rivalidade`, 29 testes novos (299 no total). Ver seção "O que a Fase 9 entrega" abaixo e adenda em docs/adr/0001 |
-| 10 | Groq (narrativa: notícias, treinador, entrevistas) | ⏳ Não iniciada | Depende de `GROQ_API_KEY` |
+| 10 | Groq (narrativa: notícias, treinador, entrevistas) | ✅ Implementada e testada — funciona sem `GROQ_API_KEY` (fallback determinístico é o generator, não um modo degradado) | `/noticias`, `/treinador`, `/entrevista`, 41 testes novos (331 no total). Ver seção "O que a Fase 10 entrega" abaixo e adenda em docs/adr/0001 |
 | 11 | Polish (UX, animações, acessibilidade, performance) | ⏳ Não iniciada | Contínuo, revisado a cada fase anterior também |
 
 ## Bloqueios ativos para avançar além da Fase 1
@@ -654,3 +654,81 @@ confronto e reporta o recorde mundial quando um é quebrado).
   completo já existe no banco (append-only, nada descartado), só não tem
   uma superfície de Discord dedicada; `/recordes` mostra só o dono atual
   de cada categoria.
+
+## O que a Fase 10 entrega
+
+`src/narrative/` entra como um novo contexto hexagonal — mas, diferente
+de todo contexto anterior, sua porta central (`NarrativeGenerator`) tem
+TRÊS implementações compostas em camadas, não uma escolha entre
+alternativas: domain/ (facts + templates puros e determinísticos) →
+ports/ (`narrativeGenerator.ts`, `newsRepository.ts`) → adapters/
+(`TemplateNarrativeGenerator`, `GroqNarrativeGenerator`,
+`FallbackNarrativeGenerator`, Prisma + in-memory para `News`) →
+services/ (`publishRecordNews.ts`, `askCoach.ts`,
+`answerInterviewQuestion.ts`, `viewNews.ts`).
+
+- **O fallback determinístico é o generator quando não há
+  `GROQ_API_KEY` — não um modo degradado.** `TemplateNarrativeGenerator`
+  é domínio puro (sem I/O), sempre disponível, sempre correto. Com a
+  chave configurada, `FallbackNarrativeGenerator` (decorator) tenta
+  `GroqNarrativeGenerator` primeiro e cai pro template em QUALQUER falha
+  (erro de rede, timeout, resposta vazia, título/corpo não separados por
+  linha) — nunca propaga o erro. Testado nos dois sentidos: sucesso do
+  Groq é usado como está, qualquer exceção aciona o fallback.
+- **`GroqNarrativeGenerator` depende de uma interface própria e estreita
+  (`GroqChatClient`), não da classe `Groq` do SDK** — mesmo padrão de DI
+  usado em todo adapter Prisma do projeto. Permite testar parsing e
+  tratamento de erro com um cliente fake, sem rede real. Implementado e
+  typechecado, mas NÃO validado contra a API real do Groq neste ambiente
+  (sem `GROQ_API_KEY`) — mesmo tratamento dado a todo adapter Prisma.
+- **A notícia de recorde mundial nunca é gerada no fluxo que quebrou o
+  recorde.** `checkAndUpdateRecord` (Fase 9) ganhou uma dependência de
+  `EventBus` e emite `RECORD_BROKEN` — tipo já modelado em
+  `events/types.ts` desde a Fase 0/1, nunca emitido até agora. Um
+  subscriber assíncrono em `src/index.ts` chama `publishRecordNews`.
+  Como `EventBus.emit` nunca espera os handlers, uma chamada Groq lenta
+  ou com falha jamais atrasa `/jogar-carreira` nem `/duelo-responder` —
+  a materialização concreta da regra "Groq nunca no caminho crítico" já
+  registrada desde o ADR original.
+- **`/treinador` e `/entrevista` chamam o `NarrativeGenerator`
+  sincronamente dentro do próprio comando** (diferente da notícia de
+  recorde) — aqui a chamada narrativa É o propósito do comando, então uma
+  falha do Groq só atinge aquele comando isolado, nunca o resultado de
+  uma partida/economia/rating, e o fallback garante uma resposta útil de
+  qualquer forma.
+- **`/treinador` e `/entrevista` usam os mesmos fatos de temporada**
+  (estágio, partidas/gols/assistências/nota média), diferenciados só por
+  persona/prompt (treinador fala COM o jogador; entrevista responde COMO
+  o jogador). Uma "última partida específica" pra entrevista exigiria uma
+  nova consulta a `MatchRepository` que nenhuma outra feature precisa
+  hoje — escopo mantido no que já é alcançável com o dado agregado
+  existente.
+
+**O que foi validado de verdade:** 41 testes novos (331 no total):
+templates determinísticos (headline/body corretos, casos com/sem dono
+anterior, mensagem de treinador reage a lesão/nota média, entrevista
+ecoa a pergunta), `GroqNarrativeGenerator` (split título/corpo, erro em
+resposta vazia ou sem separação de linha, via cliente fake),
+`FallbackNarrativeGenerator` (usa a saída do Groq quando funciona, cai
+pro template em qualquer exceção, loga o warning), `InMemoryNewsRepository`
+(mais recente primeiro, respeita limite), `publishRecordNews` (publica
+artigo, resolve e menciona o dono anterior, não falha quando o jogador não
+é encontrado — só pula), `askCoach`/`answerInterviewQuestion` (fatos de
+temporada corretos, valida pergunta vazia/longa demais),
+`checkAndUpdateRecord` (emite `RECORD_BROKEN` só quando o recorde é
+realmente batido, com o payload correto).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Só `RECORD_BROKEN` gera notícia hoje.** Outros gatilhos plausíveis
+  (hat-trick, resultado surpreendente de liga, transferência de destaque)
+  não foram conectados — `News` não tem relação com `User`/`Player`
+  (sempre global), e mais gatilhos podem ser adicionados incrementalmente
+  sem mudar a arquitetura.
+- **`/entrevista` não se ancora numa partida específica** — usa o
+  agregado de temporada, não o resultado da última partida jogada. Ver
+  justificativa de escopo acima.
+- **Sem rate limit dedicado em `/treinador`/`/entrevista`** além do que o
+  próprio Discord já impõe em slash commands — se o custo de chamadas ao
+  Groq se tornar um problema real de uso, um cooldown por jogador é a
+  mitigação natural, adicionada quando houver tráfego real que a
+  justifique (mesmo raciocínio do Risco #7).

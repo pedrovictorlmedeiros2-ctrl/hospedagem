@@ -129,7 +129,7 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
     [opponentPlayer.id, eloUpdate.newOpponentRating],
   ] as const) {
     const check = await checkAndUpdateRecord(
-      { recordRepository: deps.recordRepository },
+      { recordRepository: deps.recordRepository, events: deps.events },
       { category: "HIGHEST_GLOBAL_RATING", playerId, value: newRating, now },
     );
     if (check.isNewRecord) recordsBroken.push("HIGHEST_GLOBAL_RATING");

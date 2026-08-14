@@ -529,6 +529,72 @@ Decisões de arquitetura:
   vez de ser anexado apressadamente aqui. Registrado no RISK_REGISTER.md
   como item pendente e explícito, não descoberto tarde.
 
+## Adenda (Fase 10) — Groq: camada narrativa isolada, com fallback determinístico sempre disponível
+
+`src/narrative/` entra como um novo contexto hexagonal, cumprindo a
+decisão já registrada na criação deste ADR: "LLM (Groq) no caminho de
+gameplay" foi rejeitado desde o início — esta fase implementa exatamente
+o oposto, uma camada de texto que nunca influencia nem bloqueia o motor
+determinístico.
+
+Decisões de arquitetura:
+
+- **`NarrativeGenerator` é uma porta com três implementações que se
+  compõem, não uma substituem a outra.** `TemplateNarrativeGenerator`
+  (domínio puro, sem I/O, nunca falha) é o generator de fato quando
+  `GROQ_API_KEY` não está configurada — não é um "modo degradado", é a
+  implementação completa e válida. Quando a chave existe,
+  `FallbackNarrativeGenerator` (decorator) tenta `GroqNarrativeGenerator`
+  primeiro e cai para o template em QUALQUER falha (erro de rede, timeout,
+  resposta vazia, saída malformada) — nunca propaga o erro pro chamador.
+  Essa composição é o que cumpre, de forma verificável em teste, a
+  promessa já registrada no Risco #5 do RISK_REGISTER.md.
+- **`GroqNarrativeGenerator` depende de uma interface própria e estreita
+  (`GroqChatClient`), não da classe `Groq` do SDK.** Mesmo princípio de
+  DI já usado em todo adapter Prisma do projeto — permite testar o
+  parsing e o tratamento de erro (resposta vazia, título/corpo não
+  separados por linha) com um cliente fake, sem tocar a rede. Implementado
+  e testado dessa forma; a chamada real ao Groq não foi validada neste
+  ambiente por falta de `GROQ_API_KEY` — mesmo tratamento já dado a todo
+  adapter Prisma real (ver docs/ROADMAP.md).
+- **A notícia de recorde mundial nunca é gerada no fluxo que quebrou o
+  recorde.** `checkAndUpdateRecord` (Fase 9) ganhou uma dependência de
+  `EventBus` e agora emite `RECORD_BROKEN` (tipo já pré-modelado em
+  `events/types.ts` desde a Fase 0/1, nunca emitido até agora) sempre que
+  um recorde é batido. Um subscriber assíncrono, montado em `src/index.ts`
+  (`events.on("RECORD_BROKEN", ...)`), chama
+  `narrative/services/publishRecordNews.ts`. Como `EventBus.emit` nunca
+  espera (`await`) os handlers — eles rodam via `Promise.resolve(...)
+  .catch(...)`, erros só logados — uma chamada Groq lenta ou com falha
+  jamais atrasa ou derruba `/jogar-carreira` nem `/duelo-responder`. Essa é
+  a materialização concreta da regra "Groq nunca no caminho crítico".
+- **`/treinador` e `/entrevista` chamam o `NarrativeGenerator`
+  SINCRONAMENTE dentro do próprio comando, ao contrário da notícia de
+  recorde.** Isso não viola a regra: aqui a chamada narrativa É o próprio
+  propósito do comando (não um efeito colateral de uma partida/duelo já
+  resolvido), então uma falha ou lentidão do Groq só atinge aquele único
+  comando — nunca o resultado de uma partida, economia ou rating — e o
+  `FallbackNarrativeGenerator` garante uma resposta significativa mesmo
+  assim.
+- **`/entrevista` e `/treinador` usam os MESMOS fatos de temporada
+  (estágio de carreira, partidas/gols/assistências/nota média), só com
+  personas e prompts diferentes** (treinador fala COM o jogador em segunda
+  pessoa; entrevista responde COMO o jogador em primeira pessoa). Decisão
+  deliberada: uma "última partida específica" para a entrevista exigiria
+  uma nova consulta a `MatchRepository` (nome do adversário, placar,
+  linha de stats daquela partida específica) que nenhuma outra feature
+  precisa hoje — escopo mantido no que já é alcançável com o dado
+  agregado existente.
+- **`News` não tem relação com `User`/`Player` — é sempre uma notícia
+  global,** coerente com o próprio schema (sem `userId`/`playerId`).
+  Hoje só `RECORD_BROKEN` gera notícia; outros gatilhos plausíveis (hat-
+  trick, resultado surpreendente de liga, transferência de destaque) não
+  foram implementados — ver risco correspondente no RISK_REGISTER.md.
+- **`PlayerRepository.findById`** (adicionado na Fase 9) é reaproveitado
+  aqui para resolver o apelido do novo/antigo dono de um recorde a partir
+  do `Player.id` recebido no evento — nenhuma porta nova precisou ser
+  criada só para isso.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

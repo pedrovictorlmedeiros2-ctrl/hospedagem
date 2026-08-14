@@ -9,7 +9,9 @@ import { criarPerfilCommand } from "./commands/criarPerfil.js";
 import { duelodesafiarCommand } from "./commands/duelodesafiar.js";
 import { duelorespondCommand } from "./commands/duelorespond.js";
 import { duelosCommand } from "./commands/duelos.js";
+import { entrevistaCommand } from "./commands/entrevista.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
+import { noticiasCommand } from "./commands/noticias.js";
 import { pacotesCommand } from "./commands/pacotes.js";
 import { personalizarCommand } from "./commands/personalizar.js";
 import { pingCommand } from "./commands/ping.js";
@@ -19,6 +21,7 @@ import { recordesCommand } from "./commands/recordes.js";
 import { rivalidadeCommand } from "./commands/rivalidade.js";
 import { simularAmistosoCommand } from "./commands/simularAmistoso.js";
 import { transferirCommand } from "./commands/transferir.js";
+import { treinadorCommand } from "./commands/treinador.js";
 import { treinarCommand } from "./commands/treinar.js";
 import type { Command } from "./commands/types.js";
 
@@ -53,6 +56,9 @@ export function buildCommandRegistry(): Collection<string, Command> {
     rankingCommand,
     recordesCommand,
     rivalidadeCommand,
+    noticiasCommand,
+    treinadorCommand,
+    entrevistaCommand,
   ]) {
     commands.set(command.data.name, command);
   }

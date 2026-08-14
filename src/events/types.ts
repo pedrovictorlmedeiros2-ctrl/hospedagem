@@ -17,6 +17,7 @@ export interface DomainEvents {
     category: string;
     playerId: string;
     previousHolderId: string | null;
+    previousValue: number | null;
     value: number;
   };
 
