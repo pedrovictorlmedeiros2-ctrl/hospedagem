@@ -3,7 +3,10 @@ import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemo
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
 import { POSITION_LABELS } from "../../../../src/player/domain/labels.js";
 import { ProfileNotFoundError } from "../../../../src/player/domain/errors.js";
-import { createPlayerProfile, type CreatePlayerProfileInput } from "../../../../src/player/services/createPlayerProfile.js";
+import {
+  createPlayerProfile,
+  type CreatePlayerProfileInput,
+} from "../../../../src/player/services/createPlayerProfile.js";
 import { validateSquad } from "../../../../src/game/domain/validateSquad.js";
 import { playFriendlyMatch } from "../../../../src/game/services/playFriendlyMatch.js";
 import { EventBus } from "../../../../src/shared/eventBus.js";
@@ -26,7 +29,9 @@ function makeDeps() {
 describe("playFriendlyMatch", () => {
   it("rejects a Discord user who never created a profile", async () => {
     const deps = makeDeps();
-    await expect(playFriendlyMatch(deps, { discordId: "no-profile" })).rejects.toThrow(ProfileNotFoundError);
+    await expect(playFriendlyMatch(deps, { discordId: "no-profile" })).rejects.toThrow(
+      ProfileNotFoundError,
+    );
   });
 
   it("simulates a match around the caller's real player and emits MATCH_STARTED/MATCH_FINISHED", async () => {
@@ -85,7 +90,10 @@ describe("playFriendlyMatch", () => {
       });
 
       const { home } = await playFriendlyMatch(deps, { discordId: `player-${position}` });
-      expect(() => validateSquad(home), `position ${position} should still yield a valid squad`).not.toThrow();
+      expect(
+        () => validateSquad(home),
+        `position ${position} should still yield a valid squad`,
+      ).not.toThrow();
     }
   });
 });

@@ -134,6 +134,8 @@ describe("assertKnownChoice", () => {
   });
 
   it("rejects a value outside the list", () => {
-    expect(() => assertKnownChoice("diamond", ["bronze", "silver", "gold"], "Moldura")).toThrow(ValidationError);
+    expect(() => assertKnownChoice("diamond", ["bronze", "silver", "gold"], "Moldura")).toThrow(
+      ValidationError,
+    );
   });
 });

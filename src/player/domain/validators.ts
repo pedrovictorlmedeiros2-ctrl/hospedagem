@@ -13,24 +13,130 @@ const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
  * confederation; extend it as real users request a missing country.
  */
 export const KNOWN_NATIONALITIES = new Set([
-  "AF", "AL", "DZ", "AR", "AM", "AU", "AT", "AZ", "BE", "BO", "BA", "BR", "BG", "CM", "CA", "CL",
-  "CN", "CO", "CR", "HR", "CU", "CY", "CZ", "DK", "DO", "EC", "EG", "SV", "EE", "ET", "FI", "FR",
-  "GE", "DE", "GH", "GR", "GT", "HN", "HU", "IS", "IN", "ID", "IR", "IQ", "IE", "IL", "IT", "JM",
-  "JP", "JO", "KZ", "KE", "KR", "KW", "LV", "LB", "LT", "LU", "MK", "MG", "MY", "ML", "MX", "MA",
-  "MZ", "NL", "NZ", "NI", "NG", "NO", "PK", "PA", "PY", "PE", "PH", "PL", "PT", "QA", "RO", "RU",
-  "SA", "SN", "RS", "SG", "SK", "SI", "ZA", "ES", "SE", "CH", "SY", "TH", "TN", "TR", "UA", "AE",
-  "GB", "US", "UY", "VE", "VN", "ZM", "ZW", "CI", "TG", "CD", "CG", "GA", "CV",
+  "AF",
+  "AL",
+  "DZ",
+  "AR",
+  "AM",
+  "AU",
+  "AT",
+  "AZ",
+  "BE",
+  "BO",
+  "BA",
+  "BR",
+  "BG",
+  "CM",
+  "CA",
+  "CL",
+  "CN",
+  "CO",
+  "CR",
+  "HR",
+  "CU",
+  "CY",
+  "CZ",
+  "DK",
+  "DO",
+  "EC",
+  "EG",
+  "SV",
+  "EE",
+  "ET",
+  "FI",
+  "FR",
+  "GE",
+  "DE",
+  "GH",
+  "GR",
+  "GT",
+  "HN",
+  "HU",
+  "IS",
+  "IN",
+  "ID",
+  "IR",
+  "IQ",
+  "IE",
+  "IL",
+  "IT",
+  "JM",
+  "JP",
+  "JO",
+  "KZ",
+  "KE",
+  "KR",
+  "KW",
+  "LV",
+  "LB",
+  "LT",
+  "LU",
+  "MK",
+  "MG",
+  "MY",
+  "ML",
+  "MX",
+  "MA",
+  "MZ",
+  "NL",
+  "NZ",
+  "NI",
+  "NG",
+  "NO",
+  "PK",
+  "PA",
+  "PY",
+  "PE",
+  "PH",
+  "PL",
+  "PT",
+  "QA",
+  "RO",
+  "RU",
+  "SA",
+  "SN",
+  "RS",
+  "SG",
+  "SK",
+  "SI",
+  "ZA",
+  "ES",
+  "SE",
+  "CH",
+  "SY",
+  "TH",
+  "TN",
+  "TR",
+  "UA",
+  "AE",
+  "GB",
+  "US",
+  "UY",
+  "VE",
+  "VN",
+  "ZM",
+  "ZW",
+  "CI",
+  "TG",
+  "CD",
+  "CG",
+  "GA",
+  "CV",
 ]);
 
 export function validatePlayerName(name: string): void {
   if (!NAME_REGEX.test(name.trim())) {
-    throw new ValidationError("Nome inválido. Use de 2 a 40 letras (acentos e espaços são permitidos).");
+    throw new ValidationError(
+      "Nome inválido. Use de 2 a 40 letras (acentos e espaços são permitidos).",
+    );
   }
 }
 
 export function validateNickname(nickname: string): void {
   if (!NICKNAME_REGEX.test(nickname.trim())) {
-    throw new ValidationError("Apelido inválido. Use de 2 a 20 caracteres (letras, números, espaço, _ ou -).");
+    throw new ValidationError(
+      "Apelido inválido. Use de 2 a 20 caracteres (letras, números, espaço, _ ou -).",
+    );
   }
 }
 
@@ -50,14 +156,18 @@ export function validateAge(age: number): void {
 
 export function validateHeightCm(heightCm: number): void {
   if (!Number.isInteger(heightCm) || heightCm < 140 || heightCm > 210) {
-    throw new ValidationError("Altura inválida. Precisa ser um número inteiro entre 140 e 210 (cm).");
+    throw new ValidationError(
+      "Altura inválida. Precisa ser um número inteiro entre 140 e 210 (cm).",
+    );
   }
 }
 
 export function validateShirtNumber(shirtNumber: number | null | undefined): void {
   if (shirtNumber == null) return;
   if (!Number.isInteger(shirtNumber) || shirtNumber < 1 || shirtNumber > 99) {
-    throw new ValidationError("Número da camisa inválido. Precisa ser um número inteiro entre 1 e 99.");
+    throw new ValidationError(
+      "Número da camisa inválido. Precisa ser um número inteiro entre 1 e 99.",
+    );
   }
 }
 

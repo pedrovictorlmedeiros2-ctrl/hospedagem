@@ -21,7 +21,9 @@ export interface GoalkeeperAttributes {
 const BASELINE = 50;
 
 /** Every new player starts at a flat baseline — differentiation comes from training (Fase 4), not creation. */
-export function calculateInitialAttributes(position: Position): CoreAttributes & GoalkeeperAttributes {
+export function calculateInitialAttributes(
+  position: Position,
+): CoreAttributes & GoalkeeperAttributes {
   const isGoalkeeper = position === "GK";
   return {
     pace: BASELINE,
@@ -46,7 +48,14 @@ export function calculateInitialAttributes(position: Position): CoreAttributes &
  * sum to 1.
  */
 const OUTFIELD_WEIGHTS: Record<Exclude<Position, "GK">, CoreAttributes> = {
-  CB: { defending: 0.35, physical: 0.25, passing: 0.15, pace: 0.15, dribbling: 0.05, shooting: 0.05 },
+  CB: {
+    defending: 0.35,
+    physical: 0.25,
+    passing: 0.15,
+    pace: 0.15,
+    dribbling: 0.05,
+    shooting: 0.05,
+  },
   LB: { defending: 0.25, pace: 0.25, passing: 0.2, physical: 0.15, dribbling: 0.1, shooting: 0.05 },
   RB: { defending: 0.25, pace: 0.25, passing: 0.2, physical: 0.15, dribbling: 0.1, shooting: 0.05 },
   DM: { defending: 0.3, passing: 0.25, physical: 0.2, dribbling: 0.1, pace: 0.1, shooting: 0.05 },
@@ -59,11 +68,19 @@ const OUTFIELD_WEIGHTS: Record<Exclude<Position, "GK">, CoreAttributes> = {
   ST: { shooting: 0.35, pace: 0.25, dribbling: 0.2, passing: 0.1, physical: 0.06, defending: 0.04 },
 };
 
-export function calculateOverall(position: Position, attrs: CoreAttributes & GoalkeeperAttributes): number {
+export function calculateOverall(
+  position: Position,
+  attrs: CoreAttributes & GoalkeeperAttributes,
+): number {
   if (position === "GK") {
-    const known = [attrs.gkReflexes, attrs.gkPositioning, attrs.gkHandling, attrs.gkAerial, attrs.gkOneOnOne, attrs.gkPenalties].filter(
-      (value): value is number => value !== null,
-    );
+    const known = [
+      attrs.gkReflexes,
+      attrs.gkPositioning,
+      attrs.gkHandling,
+      attrs.gkAerial,
+      attrs.gkOneOnOne,
+      attrs.gkPenalties,
+    ].filter((value): value is number => value !== null);
     if (known.length === 0) return 0;
     return Math.round(known.reduce((sum, value) => sum + value, 0) / known.length);
   }

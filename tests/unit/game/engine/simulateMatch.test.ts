@@ -50,7 +50,9 @@ describe("simulateMatch — structure", () => {
     const away = squad("away", "Visitante", 60, "away-seed");
     const result = simulateMatch(home, away, { seed: "halftime-seed" });
 
-    expect(result.events.some((event) => event.type === "HALFTIME" && event.minute === 45)).toBe(true);
+    expect(result.events.some((event) => event.type === "HALFTIME" && event.minute === 45)).toBe(
+      true,
+    );
   });
 
   it("rejects an invalid squad instead of silently simulating garbage", () => {
@@ -80,21 +82,57 @@ describe("simulateMatch — attributes matter (statistical, across many seeds)",
 
   it("a much weaker goalkeeper concedes more goals on average than a much stronger one, all else equal", () => {
     const baseRng = () => createRng("keeper-seed");
-    const strongKeeperTeam = generateSquad({ teamId: "gk-strong", teamName: "GK Forte", style: "TACTICAL", avgOverall: 60, rng: baseRng() });
-    const weakKeeperTeam = generateSquad({ teamId: "gk-weak", teamName: "GK Fraco", style: "TACTICAL", avgOverall: 60, rng: baseRng() });
+    const strongKeeperTeam = generateSquad({
+      teamId: "gk-strong",
+      teamName: "GK Forte",
+      style: "TACTICAL",
+      avgOverall: 60,
+      rng: baseRng(),
+    });
+    const weakKeeperTeam = generateSquad({
+      teamId: "gk-weak",
+      teamName: "GK Fraco",
+      style: "TACTICAL",
+      avgOverall: 60,
+      rng: baseRng(),
+    });
 
-    const gkAttrs = { gkReflexes: 95, gkPositioning: 95, gkHandling: 95, gkAerial: 95, gkOneOnOne: 95, gkPenalties: 95 };
-    const weakGkAttrs = { gkReflexes: 15, gkPositioning: 15, gkHandling: 15, gkAerial: 15, gkOneOnOne: 15, gkPenalties: 15 };
-    strongKeeperTeam.players[0] = { ...strongKeeperTeam.players[0], ...gkAttrs } as (typeof strongKeeperTeam.players)[number];
-    weakKeeperTeam.players[0] = { ...weakKeeperTeam.players[0], ...weakGkAttrs } as (typeof weakKeeperTeam.players)[number];
+    const gkAttrs = {
+      gkReflexes: 95,
+      gkPositioning: 95,
+      gkHandling: 95,
+      gkAerial: 95,
+      gkOneOnOne: 95,
+      gkPenalties: 95,
+    };
+    const weakGkAttrs = {
+      gkReflexes: 15,
+      gkPositioning: 15,
+      gkHandling: 15,
+      gkAerial: 15,
+      gkOneOnOne: 15,
+      gkPenalties: 15,
+    };
+    strongKeeperTeam.players[0] = {
+      ...strongKeeperTeam.players[0],
+      ...gkAttrs,
+    } as (typeof strongKeeperTeam.players)[number];
+    weakKeeperTeam.players[0] = {
+      ...weakKeeperTeam.players[0],
+      ...weakGkAttrs,
+    } as (typeof weakKeeperTeam.players)[number];
 
     const attacker = squad("attacker", "Ataque", 65, "attacker-seed");
 
     let goalsAgainstStrongGk = 0;
     let goalsAgainstWeakGk = 0;
     for (let i = 0; i < TRIALS; i++) {
-      goalsAgainstStrongGk += simulateMatch(attacker, strongKeeperTeam, { seed: `strong-gk-${i}` }).homeScore;
-      goalsAgainstWeakGk += simulateMatch(attacker, weakKeeperTeam, { seed: `weak-gk-${i}` }).homeScore;
+      goalsAgainstStrongGk += simulateMatch(attacker, strongKeeperTeam, {
+        seed: `strong-gk-${i}`,
+      }).homeScore;
+      goalsAgainstWeakGk += simulateMatch(attacker, weakKeeperTeam, {
+        seed: `weak-gk-${i}`,
+      }).homeScore;
     }
 
     expect(goalsAgainstWeakGk).toBeGreaterThan(goalsAgainstStrongGk);
@@ -125,7 +163,9 @@ describe("simulateMatch — every product-spec mechanic actually fires across a 
     ];
 
     for (const type of expectedAtLeastOnce) {
-      expect(seen.has(type), `expected ${type} to occur at least once across 150 matches`).toBe(true);
+      expect(seen.has(type), `expected ${type} to occur at least once across 150 matches`).toBe(
+        true,
+      );
     }
   });
 
@@ -135,8 +175,12 @@ describe("simulateMatch — every product-spec mechanic actually fires across a 
 
     for (let i = 0; i < 30; i++) {
       const result = simulateMatch(home, away, { seed: `safety-${i}` });
-      const homeMinutes = result.playerStats.filter((p) => p.side === "home").reduce((sum, p) => sum + p.minutesPlayed, 0);
-      const awayMinutes = result.playerStats.filter((p) => p.side === "away").reduce((sum, p) => sum + p.minutesPlayed, 0);
+      const homeMinutes = result.playerStats
+        .filter((p) => p.side === "home")
+        .reduce((sum, p) => sum + p.minutesPlayed, 0);
+      const awayMinutes = result.playerStats
+        .filter((p) => p.side === "away")
+        .reduce((sum, p) => sum + p.minutesPlayed, 0);
       expect(homeMinutes).toBeGreaterThan(0);
       expect(awayMinutes).toBeGreaterThan(0);
     }

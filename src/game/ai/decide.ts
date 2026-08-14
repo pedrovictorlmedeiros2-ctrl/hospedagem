@@ -108,7 +108,10 @@ export function decideDefenseReaction(
   const weights: Record<DefenseReaction, number> = { DEFEND: 50, PRESS: 30, RECOVER: 20 };
 
   const styleMultipliers = DEFENSE_STYLE_MULTIPLIERS[style];
-  for (const [reaction, multiplier] of Object.entries(styleMultipliers) as [DefenseReaction, number][]) {
+  for (const [reaction, multiplier] of Object.entries(styleMultipliers) as [
+    DefenseReaction,
+    number,
+  ][]) {
     weights[reaction] *= multiplier;
   }
 

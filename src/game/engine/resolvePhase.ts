@@ -3,7 +3,16 @@ import { perceive } from "../ai/perceive.js";
 import { patternReadBonus, recordAction } from "../ai/pattern.js";
 import type { Rng } from "../domain/rng.js";
 import type { MatchSimState } from "../domain/state.js";
-import { AWAY_BOX, AWAY_THIRD, HOME_BOX, HOME_THIRD, MIDFIELD, type PitchZone, type Side, type SimMatchEvent } from "../domain/types.js";
+import {
+  AWAY_BOX,
+  AWAY_THIRD,
+  HOME_BOX,
+  HOME_THIRD,
+  MIDFIELD,
+  type PitchZone,
+  type Side,
+  type SimMatchEvent,
+} from "../domain/types.js";
 import { getGoalkeeper } from "./players.js";
 import { type ActionOutcome, resolveAction, resolvePenalty } from "./resolveAction.js";
 import { drainStamina } from "./stamina.js";
@@ -93,11 +102,21 @@ function applyOutcome(
       break;
     }
     case "BLOCKED_FOR_CORNER": {
-      events.push({ minute, type: "CORNER", side: attackingSide, playerId: outcome.primaryPlayer?.id ?? null });
+      events.push({
+        minute,
+        type: "CORNER",
+        side: attackingSide,
+        playerId: outcome.primaryPlayer?.id ?? null,
+      });
       break;
     }
     case "OFFSIDE": {
-      events.push({ minute, type: "OFFSIDE", side: attackingSide, playerId: outcome.primaryPlayer?.id ?? null });
+      events.push({
+        minute,
+        type: "OFFSIDE",
+        side: attackingSide,
+        playerId: outcome.primaryPlayer?.id ?? null,
+      });
       state.zone = ownThirdOf(defendingSide);
       state.possession = defendingSide;
       break;
@@ -113,14 +132,25 @@ function applyOutcome(
         const cardStats = defendingTeam.stats.get(cardPlayerId);
         if (cardStats && outcome.card === "YELLOW") cardStats.yellowCards += 1;
 
-        events.push({ minute, type: outcome.card === "YELLOW" ? "YELLOW_CARD" : "RED_CARD", side: defendingSide, playerId: cardPlayerId });
+        events.push({
+          minute,
+          type: outcome.card === "YELLOW" ? "YELLOW_CARD" : "RED_CARD",
+          side: defendingSide,
+          playerId: cardPlayerId,
+        });
 
         const isSecondYellow = outcome.card === "YELLOW" && (cardStats?.yellowCards ?? 0) >= 2;
         if (outcome.card === "RED" || isSecondYellow) {
           if (cardStats) cardStats.redCarded = true;
           sendOff(defendingTeam, cardPlayerId);
           if (isSecondYellow) {
-            events.push({ minute, type: "RED_CARD", side: defendingSide, playerId: cardPlayerId, metadata: { secondYellow: true } });
+            events.push({
+              minute,
+              type: "RED_CARD",
+              side: defendingSide,
+              playerId: cardPlayerId,
+              metadata: { secondYellow: true },
+            });
           }
         }
       }
@@ -185,7 +215,15 @@ export function resolvePhase(state: MatchSimState, minute: number, rng: Rng): Si
   const patternBonus = patternReadBonus(attackingTeam.pattern, action);
   const isInDefendingBox = isDefendingBoxFor(attackingSide, state.zone);
 
-  const outcome = resolveAction(action, attackingTeam, defendingTeam, reaction, patternBonus, isInDefendingBox, rng);
+  const outcome = resolveAction(
+    action,
+    attackingTeam,
+    defendingTeam,
+    reaction,
+    patternBonus,
+    isInDefendingBox,
+    rng,
+  );
   recordAction(attackingTeam.pattern, action);
 
   applyOutcome(state, attackingSide, outcome, minute, events, rng);

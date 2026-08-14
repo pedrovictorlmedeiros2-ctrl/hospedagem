@@ -1,13 +1,27 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BACKGROUND_LABELS, CARD_STYLE_LABELS, FRAME_LABELS, THEME_LABELS } from "../../player/domain/labels.js";
-import { updatePlayerProfile, type RawProfilePatch } from "../../player/services/updatePlayerProfile.js";
+import {
+  BACKGROUND_LABELS,
+  CARD_STYLE_LABELS,
+  FRAME_LABELS,
+  THEME_LABELS,
+} from "../../player/domain/labels.js";
+import {
+  updatePlayerProfile,
+  type RawProfilePatch,
+} from "../../player/services/updatePlayerProfile.js";
 import { buildProfileCard } from "../ui/profileCard.js";
 import type { Command } from "./types.js";
 
 const themeChoices = Object.entries(THEME_LABELS).map(([value, name]) => ({ name, value }));
-const cardStyleChoices = Object.entries(CARD_STYLE_LABELS).map(([value, name]) => ({ name, value }));
+const cardStyleChoices = Object.entries(CARD_STYLE_LABELS).map(([value, name]) => ({
+  name,
+  value,
+}));
 const frameChoices = Object.entries(FRAME_LABELS).map(([value, name]) => ({ name, value }));
-const backgroundChoices = Object.entries(BACKGROUND_LABELS).map(([value, name]) => ({ name, value }));
+const backgroundChoices = Object.entries(BACKGROUND_LABELS).map(([value, name]) => ({
+  name,
+  value,
+}));
 
 export const personalizarCommand: Command = {
   data: new SlashCommandBuilder()
@@ -18,30 +32,56 @@ export const personalizarCommand: Command = {
         .setName("identidade")
         .setDescription("Nome, apelido, número, frase e comemoração.")
         .addStringOption((opt) => opt.setName("nome").setDescription("Novo nome").setMaxLength(40))
-        .addStringOption((opt) => opt.setName("apelido").setDescription("Novo apelido").setMaxLength(20))
-        .addIntegerOption((opt) =>
-          opt.setName("numero").setDescription("Novo número da camisa (1 a 99)").setMinValue(1).setMaxValue(99),
+        .addStringOption((opt) =>
+          opt.setName("apelido").setDescription("Novo apelido").setMaxLength(20),
         )
-        .addStringOption((opt) => opt.setName("frase").setDescription("Frase de perfil").setMaxLength(140))
-        .addStringOption((opt) => opt.setName("comemoracao").setDescription("Comemoração de gol").setMaxLength(60)),
+        .addIntegerOption((opt) =>
+          opt
+            .setName("numero")
+            .setDescription("Novo número da camisa (1 a 99)")
+            .setMinValue(1)
+            .setMaxValue(99),
+        )
+        .addStringOption((opt) =>
+          opt.setName("frase").setDescription("Frase de perfil").setMaxLength(140),
+        )
+        .addStringOption((opt) =>
+          opt.setName("comemoracao").setDescription("Comemoração de gol").setMaxLength(60),
+        ),
     )
     .addSubcommand((sub) =>
       sub
         .setName("visual")
         .setDescription("Cores, tema, moldura e fundo.")
-        .addStringOption((opt) => opt.setName("cor-principal").setDescription("Cor principal (#RRGGBB)"))
-        .addStringOption((opt) => opt.setName("cor-secundaria").setDescription("Cor secundária (#RRGGBB)"))
         .addStringOption((opt) =>
-          opt.setName("tema").setDescription("Tema do perfil").addChoices(...themeChoices),
+          opt.setName("cor-principal").setDescription("Cor principal (#RRGGBB)"),
         )
         .addStringOption((opt) =>
-          opt.setName("estilo-carta").setDescription("Estilo visual da carta").addChoices(...cardStyleChoices),
+          opt.setName("cor-secundaria").setDescription("Cor secundária (#RRGGBB)"),
         )
         .addStringOption((opt) =>
-          opt.setName("moldura").setDescription("Moldura do perfil").addChoices(...frameChoices),
+          opt
+            .setName("tema")
+            .setDescription("Tema do perfil")
+            .addChoices(...themeChoices),
         )
         .addStringOption((opt) =>
-          opt.setName("fundo").setDescription("Fundo do perfil").addChoices(...backgroundChoices),
+          opt
+            .setName("estilo-carta")
+            .setDescription("Estilo visual da carta")
+            .addChoices(...cardStyleChoices),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("moldura")
+            .setDescription("Moldura do perfil")
+            .addChoices(...frameChoices),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("fundo")
+            .setDescription("Fundo do perfil")
+            .addChoices(...backgroundChoices),
         ),
     ),
 
@@ -74,7 +114,10 @@ export const personalizarCommand: Command = {
       { requesterDiscordId: discordId, targetDiscordId: discordId, patch },
     );
 
-    const card = buildProfileCard(player, { title: "🎨 Perfil atualizado!", accentColor: 0x3498db });
+    const card = buildProfileCard(player, {
+      title: "🎨 Perfil atualizado!",
+      accentColor: 0x3498db,
+    });
     await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 
     ctx.logger.info({ discordId, playerId: player.id, subcommand }, "player profile updated");

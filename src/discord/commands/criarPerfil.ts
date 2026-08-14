@@ -17,7 +17,11 @@ export const criarPerfilCommand: Command = {
       opt.setName("nome").setDescription("Nome do jogador").setRequired(true).setMaxLength(40),
     )
     .addStringOption((opt) =>
-      opt.setName("apelido").setDescription("Apelido exibido nas partidas").setRequired(true).setMaxLength(20),
+      opt
+        .setName("apelido")
+        .setDescription("Apelido exibido nas partidas")
+        .setRequired(true)
+        .setMaxLength(20),
     )
     .addStringOption((opt) =>
       opt
@@ -28,13 +32,26 @@ export const criarPerfilCommand: Command = {
         .setMaxLength(2),
     )
     .addIntegerOption((opt) =>
-      opt.setName("idade").setDescription("Idade (15 a 45)").setRequired(true).setMinValue(15).setMaxValue(45),
+      opt
+        .setName("idade")
+        .setDescription("Idade (15 a 45)")
+        .setRequired(true)
+        .setMinValue(15)
+        .setMaxValue(45),
     )
     .addStringOption((opt) =>
-      opt.setName("posicao").setDescription("Posição em campo").setRequired(true).addChoices(...positionChoices),
+      opt
+        .setName("posicao")
+        .setDescription("Posição em campo")
+        .setRequired(true)
+        .addChoices(...positionChoices),
     )
     .addStringOption((opt) =>
-      opt.setName("pe").setDescription("Pé dominante").setRequired(true).addChoices(...footChoices),
+      opt
+        .setName("pe")
+        .setDescription("Pé dominante")
+        .setRequired(true)
+        .addChoices(...footChoices),
     )
     .addIntegerOption((opt) =>
       opt
@@ -45,7 +62,11 @@ export const criarPerfilCommand: Command = {
         .setMaxValue(210),
     )
     .addStringOption((opt) =>
-      opt.setName("estilo").setDescription("Estilo de jogo").setRequired(true).addChoices(...playStyleChoices),
+      opt
+        .setName("estilo")
+        .setDescription("Estilo de jogo")
+        .setRequired(true)
+        .addChoices(...playStyleChoices),
     )
     .addIntegerOption((opt) =>
       opt
@@ -78,6 +99,9 @@ export const criarPerfilCommand: Command = {
     const card = buildProfileCard(player, { title: "✅ Perfil criado!", accentColor: 0x2ecc71 });
     await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 
-    ctx.logger.info({ discordId: interaction.user.id, playerId: player.id }, "player profile created");
+    ctx.logger.info(
+      { discordId: interaction.user.id, playerId: player.id },
+      "player profile created",
+    );
   },
 };

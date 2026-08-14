@@ -1,8 +1,11 @@
 import { Collection } from "discord.js";
+import { carreiraCommand } from "./commands/carreira.js";
 import { criarPerfilCommand } from "./commands/criarPerfil.js";
+import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
 import { personalizarCommand } from "./commands/personalizar.js";
 import { pingCommand } from "./commands/ping.js";
 import { simularAmistosoCommand } from "./commands/simularAmistoso.js";
+import { treinarCommand } from "./commands/treinar.js";
 import type { Command } from "./commands/types.js";
 
 /**
@@ -14,7 +17,15 @@ import type { Command } from "./commands/types.js";
 export function buildCommandRegistry(): Collection<string, Command> {
   const commands = new Collection<string, Command>();
 
-  for (const command of [pingCommand, criarPerfilCommand, personalizarCommand, simularAmistosoCommand]) {
+  for (const command of [
+    pingCommand,
+    criarPerfilCommand,
+    personalizarCommand,
+    simularAmistosoCommand,
+    carreiraCommand,
+    treinarCommand,
+    jogarCarreiraCommand,
+  ]) {
     commands.set(command.data.name, command);
   }
 

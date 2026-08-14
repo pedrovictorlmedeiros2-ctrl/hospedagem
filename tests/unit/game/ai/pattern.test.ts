@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createPatternMemory, patternReadBonus, recordAction } from "../../../../src/game/ai/pattern.js";
+import {
+  createPatternMemory,
+  patternReadBonus,
+  recordAction,
+} from "../../../../src/game/ai/pattern.js";
 
 describe("pattern memory", () => {
   it("gives no bonus before the action has repeated enough", () => {

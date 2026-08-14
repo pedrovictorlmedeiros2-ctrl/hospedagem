@@ -62,6 +62,10 @@ export const BACKGROUND_LABELS = {
 } as const;
 
 export const THEME_CHOICES = Object.keys(THEME_LABELS) as (keyof typeof THEME_LABELS)[];
-export const CARD_STYLE_CHOICES = Object.keys(CARD_STYLE_LABELS) as (keyof typeof CARD_STYLE_LABELS)[];
+export const CARD_STYLE_CHOICES = Object.keys(
+  CARD_STYLE_LABELS,
+) as (keyof typeof CARD_STYLE_LABELS)[];
 export const FRAME_CHOICES = Object.keys(FRAME_LABELS) as (keyof typeof FRAME_LABELS)[];
-export const BACKGROUND_CHOICES = Object.keys(BACKGROUND_LABELS) as (keyof typeof BACKGROUND_LABELS)[];
+export const BACKGROUND_CHOICES = Object.keys(
+  BACKGROUND_LABELS,
+) as (keyof typeof BACKGROUND_LABELS)[];

@@ -1,10 +1,19 @@
 import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 import type { MatchResult, MatchSquad, SimMatchEventType } from "../../game/domain/types.js";
 
-const HIGHLIGHT_TYPES: SimMatchEventType[] = ["GOAL", "PENALTY_SCORED", "PENALTY_MISSED", "RED_CARD"];
+const HIGHLIGHT_TYPES: SimMatchEventType[] = [
+  "GOAL",
+  "PENALTY_SCORED",
+  "PENALTY_MISSED",
+  "RED_CARD",
+];
 const MAX_HIGHLIGHTS = 12;
 
-export function buildMatchResultCard(result: MatchResult, home: MatchSquad, away: MatchSquad): ContainerBuilder {
+export function buildMatchResultCard(
+  result: MatchResult,
+  home: MatchSquad,
+  away: MatchSquad,
+): ContainerBuilder {
   const highlights = result.events
     .map((event, index) => ({ event, line: result.log[index] }))
     .filter(({ event }) => HIGHLIGHT_TYPES.includes(event.type))

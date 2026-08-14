@@ -131,6 +131,46 @@ registradas:
   é uma camada de override em cima disso, adicionada quando a UI ao vivo
   existir.
 
+## Adenda (Fase 4) — carreira e a primeira persistência real de partida
+
+`src/career/` segue o mesmo padrão ports/adapters. Decisões específicas:
+
+- **Só o jogador real vira `TeamPlayer`/`MatchEvent.playerId`/
+  `MatchPlayerStat`.** Companheiros e adversários sintéticos (gerados por
+  `generateSquad`) nunca têm uma linha `Player` — não existe FK para
+  apontar. `MatchRepository.persistMatchResult` filtra por
+  `matchPlayerInputId` explicitamente; eventos de jogadores sintéticos
+  são gravados com `playerId: null` (o evento continua existindo, só não
+  aponta pra ninguém).
+- **`PlayerSeasonStat` tem um dono só: `MatchRepository`.** A primeira
+  versão desta feature tentou deixar `CareerRepository` também ler/gravar
+  season stats para a lógica de progressão de estágio — isso criava dois
+  repositórios com estado potencialmente inconsistente entre si nos
+  adapters em memória (testáveis) que não compartilham dados como o
+  Postgres real compartilharia. Resolvido fazendo
+  `persistMatchResult` devolver o agregado da temporada já atualizado
+  (`PersistedMatch.seasonStat`), então quem precisa dele (progressão de
+  estágio) usa esse retorno, sem uma segunda leitura cross-repositório.
+- **`Injury` é gravado separado de `Match`, não na mesma transação.**
+  Uma lesão é estado de carreira/aptidão física, não um fato do
+  resultado da partida — arquiteturalmente pertence ao
+  `CareerRepository`. Isso significa que, em teoria, uma partida pode
+  ser persistida e o registro de lesão falhar logo em seguida (dois
+  passos, não uma transação cross-repositório). Aceito conscientemente:
+  o pior caso é o jogador não ser banido da escalação por uma lesão que
+  "deveria" tê-lo banido — não é corrupção de dado, é um efeito colateral
+  perdido. Ver RISK_REGISTER.md.
+- **`Club.externalKey` e `Team.[clubId,seasonId]` únicos** foram
+  adicionados ao schema (migration regenerada) para permitir
+  get-or-create idempotente e à prova de corrida real (upsert + captura
+  de P2002), no mesmo padrão do `User.discordId` da Fase 2 — em vez de
+  "buscar por nome, criar se não achar", que teria uma janela de corrida
+  real.
+- **Clubes rivais são um pool fixo compartilhado** (`RIVAL_CLUB_KEYS`),
+  não gerados um por usuário — todas as carreiras do "mundo" jogam contra
+  os mesmos adversários, reforçando a ideia de mundo compartilhado em vez
+  de universos paralelos por jogador.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

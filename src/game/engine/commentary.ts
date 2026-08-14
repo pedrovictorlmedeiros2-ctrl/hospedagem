@@ -1,6 +1,11 @@
 import type { MatchSquad, SimMatchEvent, Side } from "../domain/types.js";
 
-function playerName(home: MatchSquad, away: MatchSquad, side: Side | null, playerId: string | null): string {
+function playerName(
+  home: MatchSquad,
+  away: MatchSquad,
+  side: Side | null,
+  playerId: string | null,
+): string {
   if (!playerId) return "um jogador";
   const squad = side === "away" ? away : home;
   return squad.players.find((player) => player.id === playerId)?.name ?? "um jogador";
@@ -30,7 +35,10 @@ export function buildLog(events: SimMatchEvent[], home: MatchSquad, away: MatchS
       case "RED_CARD":
         return `${event.minute}' — 🟥 Cartão vermelho! ${player()} (${team()}) está fora de campo.`;
       case "SUBSTITUTION": {
-        const outId = typeof event.metadata?.["outPlayerId"] === "string" ? event.metadata["outPlayerId"] : null;
+        const outId =
+          typeof event.metadata?.["outPlayerId"] === "string"
+            ? event.metadata["outPlayerId"]
+            : null;
         const outName = playerName(home, away, event.side, outId);
         return `${event.minute}' — 🔄 Substituição em ${team()}: entra ${player()}, sai ${outName}.`;
       }

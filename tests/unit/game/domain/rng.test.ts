@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createRng, randomInt, rollContest, weightedPick } from "../../../../src/game/domain/rng.js";
+import {
+  createRng,
+  randomInt,
+  rollContest,
+  weightedPick,
+} from "../../../../src/game/domain/rng.js";
 
 describe("createRng", () => {
   it("produces the same sequence for the same seed", () => {

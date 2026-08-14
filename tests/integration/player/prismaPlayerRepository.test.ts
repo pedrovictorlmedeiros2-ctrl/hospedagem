@@ -1,7 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
 import { PrismaUserRepository } from "../../../src/identity/adapters/prismaUserRepository.js";
-import { calculateInitialAttributes, calculateOverall } from "../../../src/player/domain/attributes.js";
+import {
+  calculateInitialAttributes,
+  calculateOverall,
+} from "../../../src/player/domain/attributes.js";
 import { PrismaPlayerRepository } from "../../../src/player/adapters/prismaPlayerRepository.js";
 
 /**

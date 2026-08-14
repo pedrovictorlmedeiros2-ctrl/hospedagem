@@ -1,5 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import type { ChatInputCommandInteraction } from "discord.js";
+import type { CareerRepository } from "../../career/ports/careerRepository.js";
+import type { TrainingRepository } from "../../career/ports/trainingRepository.js";
+import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
@@ -11,6 +14,9 @@ export interface CommandContext {
   events: EventBus;
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
+  careerRepository: CareerRepository;
+  trainingRepository: TrainingRepository;
+  matchRepository: MatchRepository;
 }
 
 /**

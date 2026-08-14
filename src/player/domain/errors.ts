@@ -2,7 +2,10 @@ import { AppError } from "../../shared/errors.js";
 
 export class DuplicateProfileError extends AppError {
   constructor(readonly internalUserId: string) {
-    super("DUPLICATE_PROFILE", "Você já tem um perfil de jogador criado. Use /personalizar para editá-lo.");
+    super(
+      "DUPLICATE_PROFILE",
+      "Você já tem um perfil de jogador criado. Use /personalizar para editá-lo.",
+    );
     this.name = "DuplicateProfileError";
   }
 }

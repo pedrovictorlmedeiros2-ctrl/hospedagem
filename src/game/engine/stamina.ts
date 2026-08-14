@@ -6,7 +6,10 @@ const POSSESSION_EXTRA_DRAIN = 0.15;
 const PRESS_EXTRA_DRAIN = 0.35;
 const HALFTIME_RECOVERY = 20;
 
-export function drainStamina(team: TeamRuntimeState, options: { hasPossession: boolean; isPressing: boolean }): void {
+export function drainStamina(
+  team: TeamRuntimeState,
+  options: { hasPossession: boolean; isPressing: boolean },
+): void {
   const drain =
     BASE_DRAIN_PER_MINUTE +
     (options.hasPossession ? POSSESSION_EXTRA_DRAIN : 0) +

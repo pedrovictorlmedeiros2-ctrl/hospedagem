@@ -10,7 +10,7 @@ briefing original do produto.
 | 1 | Foundation | ✅ | Projeto TS, lint/format, logger, Prisma schema completo, event bus tipado, Discord client + 1 comando real (`/ping`) com Components V2, testes unitários, CI local (typecheck/lint/test) verde |
 | 2 | Player (`/criar-perfil`, personalização) | 🟡 Implementado, não validado contra Discord/Postgres reais | Domínio + serviços + comandos completos, 57 testes unitários verdes. Ver seção "O que 'implementado' significa aqui" abaixo |
 | 3 | Game Engine (núcleo da partida, IA) | 🟡 Núcleo implementado e testado; sem persistência nem UI ao vivo ainda | Motor puro/determinístico + `/simular-amistoso`, 34 testes novos. Ver seção "O que a Fase 3 entrega" abaixo e adenda em docs/adr/0001 |
-| 4 | Career (treino, escalação, calendário) | ⏳ Não iniciada | |
+| 4 | Career (treino, escalação, calendário) | 🟡 Implementado e testado; primeira partida com persistência real | `/carreira`, `/treinar`, `/jogar-carreira`, 19 testes novos (137 no total). Ver seção "O que a Fase 4 entrega" abaixo |
 | 5 | Competitions (ligas, copas, temporadas, seleção) | ⏳ Não iniciada | Schema já suporta genericamente (Competition/Tournament/Stage) |
 | 6 | Economy (coins, mercado, transferências, contratos) | ⏳ Não iniciada | Schema do ledger já modelado (WalletTransaction) |
 | 7 | Cards (cartas, packs, inventário) | ⏳ Não iniciada | Schema já modelado (Card/CardPack/PackOdds/UserCard) |
@@ -117,3 +117,61 @@ esquecido):**
 - Os pesos de decisão da IA (quem chuta, quando pressiona, etc.) são um
   ponto de partida ajustado "no olho", não calibrado com dados reais de
   partida — não existe partida real ainda para calibrar contra.
+
+## O que a Fase 4 entrega
+
+`src/career/` segue o mesmo padrão hexagonal das fases anteriores
+(domain → ports → adapters → services). Ela é o que finalmente dá sentido
+a persistir uma partida de verdade: cria Season/Club/Team reais, então
+`/jogar-carreira` grava `Match`/`MatchEvent`/`MatchPlayerStat`/
+`PlayerSeasonStat` de verdade (via `MatchRepository`, com Prisma real +
+in-memory testável, igual ao padrão de todo repositório neste projeto).
+
+**O que foi validado de verdade:** 19 testes de serviço novos (137 no
+total) — carreira idempotente (chamar `/carreira` várias vezes não
+recria nada), jogadores da mesma nacionalidade dividem o mesmo clube
+inicial, treino respeita cooldown e retorno decrescente, progressão de
+estágio de carreira bate exatamente com a regra de domínio (não só "às
+vezes promove"), escalação banca o jogador machucado (não ignora a
+lesão), e uma lesão realmente registrada afeta a escalação da partida
+seguinte. Um teste estatístico inicial de lesão (40 tentativas com seed
+aleatória) falhou porque a chance de o jogador REAL se machucar é baixa
+(~0,7% por partida, já que ele é só 1 de 22 em campo) — em vez de
+aumentar tentativas às cegas, `seed` virou injetável no serviço (só para
+teste, nunca usado pelo comando Discord) e uma seed determinística que
+produz lesão foi encontrada rodando o próprio serviço — teste
+determinístico, não estatístico frágil.
+
+**Bug real encontrado e corrigido na autorrevisão:** a estamina do
+jogador real nunca era gravada de volta no banco depois de uma partida —
+só `/treinar` mexia nela, então a fadiga de jogar simplesmente
+desaparecia. Corrigido: `playCareerMatch` agora persiste a estamina final
+do jogador ao fim de cada partida. Um segundo bug relacionado: o valor de
+estamina calculado pelo motor é fracionário (ex.: `67.95`), mas
+`Player.stamina` é `Int` no schema — corrigido arredondando antes de
+gravar.
+
+**Decisões de arquitetura registradas** (ver adenda "Fase 4" em
+`docs/adr/0001-stack-and-architecture.md`): só o jogador real tem uma
+linha `Player` de verdade — companheiros/adversários sintéticos nunca
+viram `TeamPlayer`, `MatchEvent.playerId` ou `MatchPlayerStat`;
+`PlayerSeasonStat` é escrito/lido só pelo `MatchRepository` (não pelo
+`CareerRepository`, para não ter dois donos da mesma tabela); `Injury` é
+gravado num passo separado (não atômico com o `Match`) porque é estado de
+carreira, não resultado de partida — risco pequeno e documentado, não
+ignorado.
+
+**O que NÃO foi implementado ainda:**
+- **Recuperação passiva de estamina entre partidas.** Hoje só existe
+  recuperação no intervalo (dentro do motor) e o custo de treinar. Jogar
+  vários dias seguidos sem folga drena estamina permanentemente até a
+  escalação te bota no banco automaticamente — realista, mas não existe
+  ainda um "descanso" ativo que o jogador possa escolher.
+- **Calendário real.** "Uma sessão de treino por dia" e "uma partida por
+  chamada de comando" usam cooldown por horas, não um calendário semanal
+  de verdade (treino/jogo/folga por dia da semana, como o briefing
+  descreve). Isso é uma estrutura maior que fica para quando a Fase 5
+  (competições/calendário de liga) existir.
+- **Transferências/contratos.** O jogador fica no clube inicial para
+  sempre neste v1; `Contract`/`Transfer` (já modelados no schema) não são
+  usados ainda — isso é Fase 6 (Economy).

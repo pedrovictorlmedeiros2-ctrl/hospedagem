@@ -1,6 +1,12 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { DuplicateProfileError, ProfileNotFoundError } from "../domain/errors.js";
-import type { NewPlayerRecord, PlayerProfilePatch, PlayerRecord, PlayerRepository } from "../ports/playerRepository.js";
+import type {
+  NewPlayerRecord,
+  PlayerAttributesPatch,
+  PlayerProfilePatch,
+  PlayerRecord,
+  PlayerRepository,
+} from "../ports/playerRepository.js";
 
 type PlayerRow = Awaited<ReturnType<PrismaClient["player"]["create"]>>;
 
@@ -76,6 +82,18 @@ export class PrismaPlayerRepository implements PlayerRepository {
   }
 
   async update(userId: string, patch: PlayerProfilePatch): Promise<PlayerRecord> {
+    try {
+      const row = await this.prisma.player.update({ where: { userId }, data: patch });
+      return toDomain(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new ProfileNotFoundError();
+      }
+      throw error;
+    }
+  }
+
+  async updateAttributes(userId: string, patch: PlayerAttributesPatch): Promise<PlayerRecord> {
     try {
       const row = await this.prisma.player.update({ where: { userId }, data: patch });
       return toDomain(row);

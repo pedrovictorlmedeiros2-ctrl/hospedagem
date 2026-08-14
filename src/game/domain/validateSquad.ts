@@ -13,7 +13,10 @@ const STARTERS_COUNT = 11;
 /** Called at the simulation boundary — a squad that fails this must never reach the AI/engine layer. */
 export function validateSquad(squad: MatchSquad): void {
   if (squad.players.length < STARTERS_COUNT) {
-    throw new InvalidSquadError(squad.teamName, `precisa de pelo menos ${STARTERS_COUNT} jogadores, tem ${squad.players.length}.`);
+    throw new InvalidSquadError(
+      squad.teamName,
+      `precisa de pelo menos ${STARTERS_COUNT} jogadores, tem ${squad.players.length}.`,
+    );
   }
 
   const ids = new Set<string>();

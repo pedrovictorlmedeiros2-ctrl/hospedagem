@@ -127,6 +127,7 @@ CREATE TABLE "Career" (
 -- CreateTable
 CREATE TABLE "Club" (
     "id" TEXT NOT NULL,
+    "externalKey" TEXT,
     "name" TEXT NOT NULL,
     "shortName" TEXT,
     "country" TEXT NOT NULL,
@@ -565,6 +566,9 @@ CREATE INDEX "Player_position_idx" ON "Player"("position");
 CREATE UNIQUE INDEX "Career_playerId_key" ON "Career"("playerId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Club_externalKey_key" ON "Club"("externalKey");
+
+-- CreateIndex
 CREATE INDEX "Club_country_idx" ON "Club"("country");
 
 -- CreateIndex
@@ -572,6 +576,9 @@ CREATE INDEX "Team_seasonId_idx" ON "Team"("seasonId");
 
 -- CreateIndex
 CREATE INDEX "Team_clubId_idx" ON "Team"("clubId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Team_clubId_seasonId_key" ON "Team"("clubId", "seasonId");
 
 -- CreateIndex
 CREATE INDEX "TeamPlayer_playerId_idx" ON "TeamPlayer"("playerId");

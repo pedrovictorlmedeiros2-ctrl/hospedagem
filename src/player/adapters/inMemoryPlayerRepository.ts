@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { DuplicateProfileError, ProfileNotFoundError } from "../domain/errors.js";
-import type { NewPlayerRecord, PlayerProfilePatch, PlayerRecord, PlayerRepository } from "../ports/playerRepository.js";
+import type {
+  NewPlayerRecord,
+  PlayerAttributesPatch,
+  PlayerProfilePatch,
+  PlayerRecord,
+  PlayerRepository,
+} from "../ports/playerRepository.js";
 
 /**
  * In-memory adapter — used by unit/service tests and local iteration
@@ -48,6 +54,17 @@ export class InMemoryPlayerRepository implements PlayerRepository {
   }
 
   async update(userId: string, patch: PlayerProfilePatch): Promise<PlayerRecord> {
+    const existing = this.byUserId.get(userId);
+    if (!existing) {
+      throw new ProfileNotFoundError();
+    }
+
+    const updated: PlayerRecord = { ...existing, ...patch, updatedAt: new Date() };
+    this.byUserId.set(userId, updated);
+    return updated;
+  }
+
+  async updateAttributes(userId: string, patch: PlayerAttributesPatch): Promise<PlayerRecord> {
     const existing = this.byUserId.get(userId);
     if (!existing) {
       throw new ProfileNotFoundError();

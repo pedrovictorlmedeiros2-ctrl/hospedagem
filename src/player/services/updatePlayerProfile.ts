@@ -1,6 +1,11 @@
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import { ValidationError } from "../../shared/errors.js";
-import { BACKGROUND_CHOICES, CARD_STYLE_CHOICES, FRAME_CHOICES, THEME_CHOICES } from "../domain/labels.js";
+import {
+  BACKGROUND_CHOICES,
+  CARD_STYLE_CHOICES,
+  FRAME_CHOICES,
+  THEME_CHOICES,
+} from "../domain/labels.js";
 import { ForbiddenProfileAccessError, ProfileNotFoundError } from "../domain/errors.js";
 import {
   assertKnownChoice,
@@ -11,7 +16,11 @@ import {
   validatePlayerName,
   validateShirtNumber,
 } from "../domain/validators.js";
-import type { PlayerProfilePatch, PlayerRecord, PlayerRepository } from "../ports/playerRepository.js";
+import type {
+  PlayerProfilePatch,
+  PlayerRecord,
+  PlayerRepository,
+} from "../ports/playerRepository.js";
 
 export interface RawProfilePatch {
   name?: string | undefined;
@@ -86,7 +95,8 @@ export async function updatePlayerProfile(
   if (patch.theme !== undefined) normalizedPatch.theme = patch.theme;
   if (patch.cardStyle !== undefined) normalizedPatch.cardStyle = patch.cardStyle;
   if (patch.profileFrame !== undefined) normalizedPatch.profileFrame = patch.profileFrame;
-  if (patch.profileBackground !== undefined) normalizedPatch.profileBackground = patch.profileBackground;
+  if (patch.profileBackground !== undefined)
+    normalizedPatch.profileBackground = patch.profileBackground;
 
   return deps.playerRepository.update(user.id, normalizedPatch);
 }

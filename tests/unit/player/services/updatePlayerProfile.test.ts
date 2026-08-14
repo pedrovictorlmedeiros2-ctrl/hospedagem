@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
-import { ForbiddenProfileAccessError, ProfileNotFoundError } from "../../../../src/player/domain/errors.js";
-import { createPlayerProfile, type CreatePlayerProfileInput } from "../../../../src/player/services/createPlayerProfile.js";
+import {
+  ForbiddenProfileAccessError,
+  ProfileNotFoundError,
+} from "../../../../src/player/domain/errors.js";
+import {
+  createPlayerProfile,
+  type CreatePlayerProfileInput,
+} from "../../../../src/player/services/createPlayerProfile.js";
 import { updatePlayerProfile } from "../../../../src/player/services/updatePlayerProfile.js";
 import { ValidationError } from "../../../../src/shared/errors.js";
 
-function validCreateInput(overrides: Partial<CreatePlayerProfileInput> = {}): CreatePlayerProfileInput {
+function validCreateInput(
+  overrides: Partial<CreatePlayerProfileInput> = {},
+): CreatePlayerProfileInput {
   return {
     discordId: "discord-1",
     name: "Pedro Medeiros",
@@ -23,7 +31,10 @@ function validCreateInput(overrides: Partial<CreatePlayerProfileInput> = {}): Cr
 }
 
 async function makeDepsWithProfile(discordId = "discord-1") {
-  const deps = { userRepository: new InMemoryUserRepository(), playerRepository: new InMemoryPlayerRepository() };
+  const deps = {
+    userRepository: new InMemoryUserRepository(),
+    playerRepository: new InMemoryPlayerRepository(),
+  };
   await createPlayerProfile(deps, validCreateInput({ discordId }));
   return deps;
 }
@@ -69,7 +80,10 @@ describe("updatePlayerProfile", () => {
   });
 
   it("rejects updating a profile that doesn't exist yet", async () => {
-    const deps = { userRepository: new InMemoryUserRepository(), playerRepository: new InMemoryPlayerRepository() };
+    const deps = {
+      userRepository: new InMemoryUserRepository(),
+      playerRepository: new InMemoryPlayerRepository(),
+    };
 
     await expect(
       updatePlayerProfile(deps, {
@@ -84,7 +98,11 @@ describe("updatePlayerProfile", () => {
     const deps = await makeDepsWithProfile();
 
     await expect(
-      updatePlayerProfile(deps, { requesterDiscordId: "discord-1", targetDiscordId: "discord-1", patch: {} }),
+      updatePlayerProfile(deps, {
+        requesterDiscordId: "discord-1",
+        targetDiscordId: "discord-1",
+        patch: {},
+      }),
     ).rejects.toThrow(ValidationError);
   });
 

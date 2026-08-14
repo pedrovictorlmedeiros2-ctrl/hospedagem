@@ -279,6 +279,11 @@ model Career {
 
 model Club {
   id           String  @id @default(cuid())
+  // Stable business key for deterministic get-or-create (e.g. a fixed pool
+  // of shared rival clubs, or "starter-club:<nationality>"). Null for
+  // clubs created through normal gameplay (transfers, admin tools) that
+  // don't need idempotent lookup.
+  externalKey  String? @unique
   name         String
   shortName    String?
   country      String
@@ -319,6 +324,10 @@ model Team {
   awayMatches      Match[]           @relation("AwayTeam")
   tournamentEntries TournamentEntry[]
 
+  // NULLs are never considered equal by a unique index (Postgres
+  // semantics), so this doesn't collide across NATIONAL teams, which have
+  // no clubId — each still gets its own row.
+  @@unique([clubId, seasonId])
   @@index([seasonId])
   @@index([clubId])
 }

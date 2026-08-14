@@ -14,13 +14,14 @@ import type { Command } from "./types.js";
  * and no legacy `content`/`embeds`.
  */
 export const pingCommand: Command = {
-  data: new SlashCommandBuilder().setName("ping").setDescription("Verifica se o Football Game está no ar."),
+  data: new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Verifica se o Football Game está no ar."),
 
   async execute(interaction, ctx) {
     const start = Date.now();
 
-    const dbOk = await ctx.prisma
-      .$queryRaw`SELECT 1`
+    const dbOk = await ctx.prisma.$queryRaw`SELECT 1`
       .then(() => true)
       .catch((error: unknown) => {
         ctx.logger.error({ error }, "health check: database unreachable");

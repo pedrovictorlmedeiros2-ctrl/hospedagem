@@ -21,6 +21,10 @@ de verdade (código + teste), nunca só por ter sido discutido.
 | 12 | Pesos de decisão da IA (`src/game/ai/decide.ts`) e constantes de resolução de ação (`resolveAction.ts`) são heurísticas ajustadas "no olho", não calibradas com dados reais | Médio — balanceamento pode estar longe do realista (ex.: média de ~2 gols/partida observada em amostra, plausível mas não validada contra estatística real de futebol) | Documentado no código e aqui; revisar quando houver dados reais de partidas jogadas | Aceito por ora, é o esperado para um v1 |
 | 13 | `/simular-amistoso` não persiste a partida em `Match`/`MatchEvent` — só emite eventos no event bus | Baixo — é uma decisão consciente (ver ADR 0001, adenda Fase 3), mas significa que nenhum resultado de partida hoje afeta carreira/ranking/stats permanentes | Persistência real chega na Fase 4/5 quando houver Season/Team reais para a partida pertencer | Aceito, documentado |
 
+| 14 | `Injury` é gravado num passo separado da transação de `Match` (não atômico entre `MatchRepository` e `CareerRepository`) | Baixo — pior caso é uma lesão "perdida" (partida gravada, lesão não), não corrupção de dado | Decisão registrada em ADR 0001, adenda Fase 4; se virar problema real, considerar um `UnitOfWork` cross-repositório | Aceito conscientemente |
+| 15 | `TeamPlayer.ensureOnRoster` não é à prova de corrida real (chave única inclui `joinedAt`, então não dá pra usar upsert limpo) | Baixo — pior caso é uma linha de elenco duplicada numa janela de corrida estreita (primeira entrada de um jogador num time) | Documentado no código do adapter Prisma; corrigir se aparecer de verdade em produção | Aceito, mesmo padrão de risco baixo já usado no Club/User upsert |
+| 16 | Sem recuperação passiva de estamina entre partidas/dias — só no intervalo da partida e ao custo de treinar | Baixo — jogar sem folga deixa a estamina cair até a escalação bancar o jogador automaticamente (efeito colateral aceitável, não é bug) | Fica para quando existir um "calendário real" (Fase 5) com conceito de descanso ativo | Aceito por ora |
+
 ## Nota sobre `npm audit`
 
 Ao instalar as dependências iniciais, `npm audit` reportou 5 vulnerabilidades

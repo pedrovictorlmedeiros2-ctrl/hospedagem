@@ -2,7 +2,14 @@ import type { Rng } from "../domain/rng.js";
 import { rollContest } from "../domain/rng.js";
 import type { TeamRuntimeState } from "../domain/state.js";
 import type { AttackAction, DefenseReaction, MatchPlayerInput } from "../domain/types.js";
-import { getGoalkeeper, gkRating, pickAttacker, pickDefender, pickDribbler, pickPasser } from "./players.js";
+import {
+  getGoalkeeper,
+  gkRating,
+  pickAttacker,
+  pickDefender,
+  pickDribbler,
+  pickPasser,
+} from "./players.js";
 
 export type ActionOutcomeKind =
   | "ADVANCE"
@@ -35,7 +42,12 @@ function intensityFor(reaction: DefenseReaction): number {
   return 1.0;
 }
 
-function buildFoulOutcome(defender: MatchPlayerInput, victim: MatchPlayerInput, isInDefendingBox: boolean, rng: Rng): ActionOutcome {
+function buildFoulOutcome(
+  defender: MatchPlayerInput,
+  victim: MatchPlayerInput,
+  isInDefendingBox: boolean,
+  rng: Rng,
+): ActionOutcome {
   let card: "YELLOW" | "RED" | undefined;
   if (rng() < 0.25) card = "YELLOW";
   if (card === "YELLOW" && rng() < 0.08) card = "RED";
@@ -54,7 +66,11 @@ function buildFoulOutcome(defender: MatchPlayerInput, victim: MatchPlayerInput, 
   };
 }
 
-function resolveShot(attackingTeam: TeamRuntimeState, defendingTeam: TeamRuntimeState, rng: Rng): ActionOutcome {
+function resolveShot(
+  attackingTeam: TeamRuntimeState,
+  defendingTeam: TeamRuntimeState,
+  rng: Rng,
+): ActionOutcome {
   const shooter = pickAttacker(attackingTeam, rng);
   const gk = getGoalkeeper(defendingTeam);
 
@@ -71,7 +87,11 @@ function resolveShot(attackingTeam: TeamRuntimeState, defendingTeam: TeamRuntime
     : { kind: "SAVED", zoneDelta: 0, primaryPlayer: shooter, gk };
 }
 
-function resolveCross(attackingTeam: TeamRuntimeState, defendingTeam: TeamRuntimeState, rng: Rng): ActionOutcome {
+function resolveCross(
+  attackingTeam: TeamRuntimeState,
+  defendingTeam: TeamRuntimeState,
+  rng: Rng,
+): ActionOutcome {
   const crosser = pickPasser(attackingTeam, rng);
   const defender = pickDefender(defendingTeam, rng);
 
@@ -129,7 +149,11 @@ function resolvePass(
 
   const defenderRating = defender.defending * intensityFor(defenseReaction) * 0.8 + patternBonus;
   if (rollContest(rng, passer.passing, defenderRating)) {
-    return { kind: rng() < 0.4 ? "ADVANCE" : "STALL", zoneDelta: rng() < 0.4 ? 1 : 0, primaryPlayer: passer };
+    return {
+      kind: rng() < 0.4 ? "ADVANCE" : "STALL",
+      zoneDelta: rng() < 0.4 ? 1 : 0,
+      primaryPlayer: passer,
+    };
   }
 
   const foulChance = defenseReaction === "PRESS" ? 0.1 : 0.04;
@@ -139,7 +163,8 @@ function resolvePass(
 }
 
 function resolveHold(defenseReaction: DefenseReaction, rng: Rng): ActionOutcome {
-  const turnoverChance = defenseReaction === "PRESS" ? 0.15 : defenseReaction === "DEFEND" ? 0.05 : 0.02;
+  const turnoverChance =
+    defenseReaction === "PRESS" ? 0.15 : defenseReaction === "DEFEND" ? 0.05 : 0.02;
   if (rng() < turnoverChance) return { kind: "TURNOVER", zoneDelta: 0 };
   return { kind: "STALL", zoneDelta: 0 };
 }
@@ -159,15 +184,33 @@ export function resolveAction(
     case "CROSS":
       return resolveCross(attackingTeam, defendingTeam, rng);
     case "DRIBBLE":
-      return resolveDribble(attackingTeam, defendingTeam, defenseReaction, patternBonus, isInDefendingBox, rng);
+      return resolveDribble(
+        attackingTeam,
+        defendingTeam,
+        defenseReaction,
+        patternBonus,
+        isInDefendingBox,
+        rng,
+      );
     case "PASS":
-      return resolvePass(attackingTeam, defendingTeam, defenseReaction, patternBonus, isInDefendingBox, rng);
+      return resolvePass(
+        attackingTeam,
+        defendingTeam,
+        defenseReaction,
+        patternBonus,
+        isInDefendingBox,
+        rng,
+      );
     case "HOLD":
       return resolveHold(defenseReaction, rng);
   }
 }
 
-export function resolvePenalty(shooter: MatchPlayerInput, gk: MatchPlayerInput | null, rng: Rng): "SCORED" | "MISSED" {
+export function resolvePenalty(
+  shooter: MatchPlayerInput,
+  gk: MatchPlayerInput | null,
+  rng: Rng,
+): "SCORED" | "MISSED" {
   const takerQuality = shooter.shooting * 0.8 + shooter.overall * 0.2;
   const gkPenaltyRating = gk?.gkPenalties ?? gkRating(gk);
   return rollContest(rng, takerQuality, gkPenaltyRating * 0.9) ? "SCORED" : "MISSED";

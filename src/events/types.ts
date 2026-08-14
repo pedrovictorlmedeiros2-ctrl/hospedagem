@@ -13,7 +13,12 @@ export interface DomainEvents {
   CAREER_UPDATED: { playerId: string; stage: string };
   RANKING_UPDATED: { scope: string; metric: string };
   RECORD_CHECKED: { category: string; playerId: string };
-  RECORD_BROKEN: { category: string; playerId: string; previousHolderId: string | null; value: number };
+  RECORD_BROKEN: {
+    category: string;
+    playerId: string;
+    previousHolderId: string | null;
+    value: number;
+  };
 
   TRANSFER_CREATED: { transferId: string; playerId: string; toClubId: string };
   PLAYER_CALLED_UP: { playerId: string; competitionId: string };

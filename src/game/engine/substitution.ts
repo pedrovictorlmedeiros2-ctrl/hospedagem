@@ -35,7 +35,10 @@ function applySubstitution(team: TeamRuntimeState, outgoingId: string): Substitu
 }
 
 /** Injured player forced off. Tries to bring on a replacement (consuming a substitution slot); if none is available the team simply plays short. */
-export function substituteInjured(team: TeamRuntimeState, outgoingId: string): SubstitutionResult | null {
+export function substituteInjured(
+  team: TeamRuntimeState,
+  outgoingId: string,
+): SubstitutionResult | null {
   if (substitutionsUsed(team) >= MAX_SUBSTITUTIONS) {
     team.onPitch = team.onPitch.filter((id) => id !== outgoingId);
     return null;
@@ -54,7 +57,10 @@ export function sendOff(team: TeamRuntimeState, outgoingId: string): void {
 }
 
 /** Stamina-driven substitution check, called once per minute per team from minute 55 onward. */
-export function maybeSubstituteTired(team: TeamRuntimeState, minute: number): SubstitutionResult | null {
+export function maybeSubstituteTired(
+  team: TeamRuntimeState,
+  minute: number,
+): SubstitutionResult | null {
   if (minute < EARLIEST_STAMINA_SUB_MINUTE) return null;
   if (substitutionsUsed(team) >= MAX_SUBSTITUTIONS) return null;
   if (team.bench.length === 0) return null;

@@ -22,12 +22,21 @@ const CREATIVE_POSITIONS: Position[] = ["CM", "AM", "LM", "RM", "DM"];
 const DRIBBLE_POSITIONS: Position[] = ["LW", "RW", "AM", "ST", "LM", "RM"];
 const DEFENDER_POSITIONS: Position[] = ["CB", "LB", "RB", "DM"];
 
-function pickWeighted(candidates: MatchPlayerInput[], rng: Rng, rate: (player: MatchPlayerInput) => number): MatchPlayerInput {
+function pickWeighted(
+  candidates: MatchPlayerInput[],
+  rng: Rng,
+  rate: (player: MatchPlayerInput) => number,
+): MatchPlayerInput {
   const entries = candidates.map((player) => [player, Math.max(1, rate(player))] as const);
   return weightedPick(rng, entries);
 }
 
-function pickFromPreferred(team: TeamRuntimeState, preferred: Position[], rng: Rng, rate: (p: MatchPlayerInput) => number): MatchPlayerInput {
+function pickFromPreferred(
+  team: TeamRuntimeState,
+  preferred: Position[],
+  rng: Rng,
+  rate: (p: MatchPlayerInput) => number,
+): MatchPlayerInput {
   const candidates = onPitchPlayers(team).filter((player) => player.position !== "GK");
   const inPosition = candidates.filter((player) => preferred.includes(player.position));
   const pool = inPosition.length > 0 ? inPosition : candidates;

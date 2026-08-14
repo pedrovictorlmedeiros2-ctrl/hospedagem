@@ -22,7 +22,8 @@ export const ZONE_LABELS: Record<PitchZone, string> = {
 
 export type Side = "home" | "away";
 
-export type TeamStyle = "DEFENSIVE" | "AGGRESSIVE" | "POSSESSION" | "COUNTER_ATTACK" | "DRIBBLING" | "TACTICAL";
+export type TeamStyle =
+  "DEFENSIVE" | "AGGRESSIVE" | "POSSESSION" | "COUNTER_ATTACK" | "DRIBBLING" | "TACTICAL";
 
 export type AttackAction = "HOLD" | "PASS" | "DRIBBLE" | "SHOOT" | "CROSS";
 export type DefenseReaction = "DEFEND" | "PRESS" | "RECOVER";
@@ -90,6 +91,8 @@ export interface MatchPlayerStatLine {
   saves: number;
   goalsConceded: number;
   rating: number;
+  /** Stamina (0-100) at full-time — an unused substitute ends at 100, same as they started. */
+  staminaRemaining: number;
 }
 
 export interface MatchResult {

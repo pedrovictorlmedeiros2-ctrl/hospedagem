@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { calculateInitialAttributes, calculateOverall } from "../../../../src/player/domain/attributes.js";
+import {
+  calculateInitialAttributes,
+  calculateOverall,
+} from "../../../../src/player/domain/attributes.js";
 
 describe("calculateInitialAttributes", () => {
   it("gives an outfield player a flat 50 baseline and null goalkeeper attributes", () => {
@@ -45,6 +48,8 @@ describe("calculateOverall", () => {
     const boostedDefending = { ...attrs, defending: 90, physical: 90, shooting: 10 };
     const boostedShooting = { ...attrs, defending: 10, physical: 10, shooting: 90 };
 
-    expect(calculateOverall("CB", boostedDefending)).toBeGreaterThan(calculateOverall("CB", boostedShooting));
+    expect(calculateOverall("CB", boostedDefending)).toBeGreaterThan(
+      calculateOverall("CB", boostedShooting),
+    );
   });
 });

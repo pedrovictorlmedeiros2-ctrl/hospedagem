@@ -4,12 +4,12 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 3 — Game Engine** com o núcleo do motor de partida
-implementado e testado (`/simular-amistoso`), além da Fase 2 completa
-(`/criar-perfil`, `/personalizar`). A integração real com Discord e
-Postgres ainda não foi validada neste ambiente (sem credenciais), e a
-partida ainda não persiste no banco nem tem interface ao vivo por botão —
-ver `docs/ROADMAP.md` para o que "implementado" significa em cada fase, e
+Estado atual: **Fase 4 — Career** implementada e testada (`/carreira`,
+`/treinar`, `/jogar-carreira` — a primeira partida que persiste de
+verdade em `Match`/`MatchEvent`/`PlayerSeasonStat`), além das Fases 2 e 3
+completas. A integração real com Discord e Postgres ainda não foi
+validada neste ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o
+que "implementado" significa em cada fase, e
 `docs/adr/0001-stack-and-architecture.md` para as decisões de arquitetura.
 
 ## Comandos do jogo
@@ -20,7 +20,10 @@ ver `docs/ROADMAP.md` para o que "implementado" significa em cada fase, e
 | `/criar-perfil` | Cria o jogador (nome, apelido, nacionalidade, idade, posição, pé, altura, estilo, número) |
 | `/personalizar identidade` | Edita nome, apelido, número, frase e comemoração |
 | `/personalizar visual` | Edita cores, tema, estilo de carta, moldura e fundo (cosmético, sem efeito no gameplay) |
-| `/simular-amistoso` | Simula uma partida completa do seu jogador contra um adversário sintético — mostra placar, posse e lances (motor de partida, sem interface ao vivo ainda) |
+| `/simular-amistoso` | Simula uma partida de teste do motor contra um adversário sintético (não persiste no banco) |
+| `/carreira` | Mostra clube, estágio de carreira, estatísticas da temporada e status de lesão |
+| `/treinar` | Treina um atributo (uma sessão por dia, retorno decrescente perto do limite) |
+| `/jogar-carreira` | Joga a próxima partida pelo clube atual — persiste no banco, atualiza estatísticas e pode promover/lesionar o jogador |
 
 ## Stack
 

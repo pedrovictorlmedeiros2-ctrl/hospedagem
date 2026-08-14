@@ -4,7 +4,9 @@ import type { PlayerRecord } from "../../player/ports/playerRepository.js";
 
 /** ISO 3166-1 alpha-2 → flag emoji via the standard regional-indicator codepoint offset (0x1F1E6 - 'A'.charCodeAt(0)). */
 function countryCodeToFlagEmoji(code: string): string {
-  return [...code.toUpperCase()].map((char) => String.fromCodePoint(127397 + char.charCodeAt(0))).join("");
+  return [...code.toUpperCase()]
+    .map((char) => String.fromCodePoint(127397 + char.charCodeAt(0)))
+    .join("");
 }
 
 export interface ProfileCardOptions {
@@ -12,7 +14,10 @@ export interface ProfileCardOptions {
   accentColor: number;
 }
 
-export function buildProfileCard(player: PlayerRecord, options: ProfileCardOptions): ContainerBuilder {
+export function buildProfileCard(
+  player: PlayerRecord,
+  options: ProfileCardOptions,
+): ContainerBuilder {
   const flag = countryCodeToFlagEmoji(player.nationality);
   const numberLabel = player.shirtNumber ? `#${player.shirtNumber}` : "sem número";
 

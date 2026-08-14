@@ -1,6 +1,9 @@
+import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";
+import { PrismaTrainingRepository } from "./career/adapters/prismaTrainingRepository.js";
 import { loadEnv } from "./config/env.js";
 import { getPrismaClient, disconnectPrisma } from "./database/prisma.js";
 import { createDiscordClient } from "./discord/client.js";
+import { PrismaMatchRepository } from "./game/adapters/prismaMatchRepository.js";
 import { PrismaUserRepository } from "./identity/adapters/prismaUserRepository.js";
 import { PrismaPlayerRepository } from "./player/adapters/prismaPlayerRepository.js";
 import { EventBus } from "./shared/eventBus.js";
@@ -13,8 +16,20 @@ async function main() {
   const events = new EventBus(logger);
   const userRepository = new PrismaUserRepository(prisma);
   const playerRepository = new PrismaPlayerRepository(prisma);
+  const careerRepository = new PrismaCareerRepository(prisma);
+  const trainingRepository = new PrismaTrainingRepository(prisma);
+  const matchRepository = new PrismaMatchRepository(prisma);
 
-  const client = createDiscordClient({ prisma, logger, events, userRepository, playerRepository });
+  const client = createDiscordClient({
+    prisma,
+    logger,
+    events,
+    userRepository,
+    playerRepository,
+    careerRepository,
+    trainingRepository,
+    matchRepository,
+  });
 
   let shuttingDown = false;
   async function shutdown(signal: string) {

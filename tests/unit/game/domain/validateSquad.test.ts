@@ -5,7 +5,13 @@ import { InvalidSquadError, validateSquad } from "../../../../src/game/domain/va
 import type { MatchSquad } from "../../../../src/game/domain/types.js";
 
 function validSquad(): MatchSquad {
-  return generateSquad({ teamId: "t1", teamName: "Time Teste", style: "TACTICAL", avgOverall: 60, rng: createRng("squad-seed") });
+  return generateSquad({
+    teamId: "t1",
+    teamName: "Time Teste",
+    style: "TACTICAL",
+    avgOverall: 60,
+    rng: createRng("squad-seed"),
+  });
 }
 
 describe("validateSquad", () => {
@@ -33,7 +39,10 @@ describe("validateSquad", () => {
 
   it("rejects a squad with a duplicate player id", () => {
     const squad = validSquad();
-    squad.players[1] = { ...squad.players[1], id: squad.players[0]?.id } as (typeof squad.players)[number];
+    squad.players[1] = {
+      ...squad.players[1],
+      id: squad.players[0]?.id,
+    } as (typeof squad.players)[number];
     expect(() => validateSquad(squad)).toThrow(InvalidSquadError);
   });
 });
