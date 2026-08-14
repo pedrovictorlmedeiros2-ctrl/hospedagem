@@ -18,6 +18,9 @@ de verdade (código + teste), nunca só por ter sido discutido.
 | 10 | Nome/apelido de jogador não são únicos globalmente (só `userId` é) | Baixo — decisão consciente, não bug | Documentado em docs/DATABASE.md; se precisar de unicidade de apelido no futuro, exige checar colisão + UX de sugestão de alternativa | Decisão aceita |
 | 11 | Lista de nacionalidades válidas (`KNOWN_NATIONALITIES`) é um subconjunto curado do ISO 3166-1 alpha-2, não o catálogo completo | Baixo — jogador de um país fora da lista não consegue criar perfil | Documentado no próprio código; ampliar a lista é uma mudança pequena e segura quando um usuário real esbarrar nisso | Aceito por ora |
 
+| 12 | Pesos de decisão da IA (`src/game/ai/decide.ts`) e constantes de resolução de ação (`resolveAction.ts`) são heurísticas ajustadas "no olho", não calibradas com dados reais | Médio — balanceamento pode estar longe do realista (ex.: média de ~2 gols/partida observada em amostra, plausível mas não validada contra estatística real de futebol) | Documentado no código e aqui; revisar quando houver dados reais de partidas jogadas | Aceito por ora, é o esperado para um v1 |
+| 13 | `/simular-amistoso` não persiste a partida em `Match`/`MatchEvent` — só emite eventos no event bus | Baixo — é uma decisão consciente (ver ADR 0001, adenda Fase 3), mas significa que nenhum resultado de partida hoje afeta carreira/ranking/stats permanentes | Persistência real chega na Fase 4/5 quando houver Season/Team reais para a partida pertencer | Aceito, documentado |
+
 ## Nota sobre `npm audit`
 
 Ao instalar as dependências iniciais, `npm audit` reportou 5 vulnerabilidades

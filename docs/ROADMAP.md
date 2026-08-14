@@ -9,7 +9,7 @@ briefing original do produto.
 | 0 | Discovery | ✅ | ADR 0001, DATABASE.md, RISK_REGISTER.md, este roadmap |
 | 1 | Foundation | ✅ | Projeto TS, lint/format, logger, Prisma schema completo, event bus tipado, Discord client + 1 comando real (`/ping`) com Components V2, testes unitários, CI local (typecheck/lint/test) verde |
 | 2 | Player (`/criar-perfil`, personalização) | 🟡 Implementado, não validado contra Discord/Postgres reais | Domínio + serviços + comandos completos, 57 testes unitários verdes. Ver seção "O que 'implementado' significa aqui" abaixo |
-| 3 | Game Engine (núcleo da partida, IA) | ⏳ Não iniciada | Maior risco técnico do projeto — ver RISK_REGISTER #3 |
+| 3 | Game Engine (núcleo da partida, IA) | 🟡 Núcleo implementado e testado; sem persistência nem UI ao vivo ainda | Motor puro/determinístico + `/simular-amistoso`, 34 testes novos. Ver seção "O que a Fase 3 entrega" abaixo e adenda em docs/adr/0001 |
 | 4 | Career (treino, escalação, calendário) | ⏳ Não iniciada | |
 | 5 | Competitions (ligas, copas, temporadas, seleção) | ⏳ Não iniciada | Schema já suporta genericamente (Competition/Tournament/Stage) |
 | 6 | Economy (coins, mercado, transferências, contratos) | ⏳ Não iniciada | Schema do ledger já modelado (WalletTransaction) |
@@ -64,3 +64,56 @@ um round-trip real create/find/update, mas fica **pulado** (não "passando
 com mock") quando `DATABASE_URL` não aponta para um Postgres alcançável —
 que é o caso deste ambiente. Rodar `npm test` mostra isso explicitamente:
 `1 skipped` com um aviso no stderr.
+
+## O que a Fase 3 entrega
+
+O motor (`src/game/`) é puro, determinístico (seed → mesmo resultado
+sempre) e sem I/O — ver a adenda "Fase 3" em
+`docs/adr/0001-stack-and-architecture.md` para as decisões de escopo
+(zona abstrata 0-4 em vez de física contínua, sem persistência em
+Match/Team/Season ainda, goleiro manual adiado).
+
+**O que foi validado de verdade:** 34 testes unitários novos (94 no
+total), incluindo testes estatísticos multi-seed que provam que os
+atributos importam de verdade — não é só "roda sem erro":
+- Determinismo: mesmo seed produz `MatchResult` idêntico byte a byte.
+- Um time 90 OVR bate um time 25 OVR por +1 gol de saldo em média (60
+  partidas simuladas).
+- Um goleiro 95 de atributo sofre menos gols que um de 15, tudo mais
+  igual (60 partidas simuladas de cada lado).
+- Todo mecanismo do briefing dispara pelo menos uma vez em 150 partidas:
+  gol, cartão amarelo, cartão vermelho, escanteio, impedimento, pênalti
+  (convertido e perdido), lesão, substituição.
+- Uma escalação nunca fica vazia (jogador expulso/lesionado sem
+  substituto disponível ainda deixa o time em campo, só reduzido).
+- **Bug real encontrado e corrigido na autorrevisão:** ao montar a
+  escalação em torno do jogador real do usuário
+  (`playFriendlyMatch.ts`), o código original substituía o jogador na
+  posição sorteada por índice `0` quando a posição do jogador real
+  (DM/AM/LW/RW) não existia literalmente na formação 4-4-2 sintética —
+  index `0` é o goleiro, então qualquer perfil DM/AM/LW/RW quebraria a
+  validação de escalação (zero goleiros titulares). Corrigido para
+  substituir por grupo de posição (defesa/meio/ataque), nunca o goleiro a
+  menos que a posição real também seja goleiro. Há um teste de regressão
+  cobrindo as 12 posições possíveis.
+
+**O que NÃO foi implementado ainda (deferido conscientemente, não
+esquecido):**
+- **Persistência em `Match`/`MatchEvent`/`MatchPlayerStat`.** Essas
+  tabelas exigem `Team`/`Season`/`Competition` reais, que só existem a
+  partir da Fase 4/5. `/simular-amistoso` emite `MATCH_STARTED` /
+  `MATCH_FINISHED` no event bus (para quem quiser reagir), mas não grava
+  no banco — persistir uma partida de teste forçaria fabricar
+  registros falsos de temporada/clube só para satisfazer as foreign
+  keys.
+- **Interface ao vivo por botão** (controles contextuais a cada lance,
+  como o briefing pede). `/simular-amistoso` roda a partida inteira de
+  uma vez e mostra o resultado final — não há troca de mensagem a cada
+  minuto nem timers. Isso é um projeto de UI à parte (estado de
+  interação por partida, componentes que mudam por contexto de jogo).
+- **Controle manual de goleiro.** O goleiro é sempre controlado pela IA
+  neste v1; controle manual por botão depende da interface ao vivo acima
+  existir primeiro.
+- Os pesos de decisão da IA (quem chuta, quando pressiona, etc.) são um
+  ponto de partida ajustado "no olho", não calibrado com dados reais de
+  partida — não existe partida real ainda para calibrar contra.

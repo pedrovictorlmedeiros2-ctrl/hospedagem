@@ -4,12 +4,13 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 2 — Player** implementada (`/criar-perfil`,
-`/personalizar`), com a ressalva de que a integração real com Discord e
-Postgres ainda não foi validada neste ambiente (sem credenciais). Ver
-`docs/ROADMAP.md` para o plano completo por fases, o que "implementado"
-significa em cada uma, e `docs/adr/0001-stack-and-architecture.md` para as
-decisões de arquitetura.
+Estado atual: **Fase 3 — Game Engine** com o núcleo do motor de partida
+implementado e testado (`/simular-amistoso`), além da Fase 2 completa
+(`/criar-perfil`, `/personalizar`). A integração real com Discord e
+Postgres ainda não foi validada neste ambiente (sem credenciais), e a
+partida ainda não persiste no banco nem tem interface ao vivo por botão —
+ver `docs/ROADMAP.md` para o que "implementado" significa em cada fase, e
+`docs/adr/0001-stack-and-architecture.md` para as decisões de arquitetura.
 
 ## Comandos do jogo
 
@@ -19,6 +20,7 @@ decisões de arquitetura.
 | `/criar-perfil` | Cria o jogador (nome, apelido, nacionalidade, idade, posição, pé, altura, estilo, número) |
 | `/personalizar identidade` | Edita nome, apelido, número, frase e comemoração |
 | `/personalizar visual` | Edita cores, tema, estilo de carta, moldura e fundo (cosmético, sem efeito no gameplay) |
+| `/simular-amistoso` | Simula uma partida completa do seu jogador contra um adversário sintético — mostra placar, posse e lances (motor de partida, sem interface ao vivo ainda) |
 
 ## Stack
 

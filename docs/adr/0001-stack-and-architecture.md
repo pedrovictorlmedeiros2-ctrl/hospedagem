@@ -93,6 +93,44 @@ trocar a implementação depois sem tocar em domínio/serviço. Módulos futuros
 (economy, cards, competitions) devem seguir o mesmo padrão quando também
 precisarem ser testáveis sem infraestrutura real.
 
+## Adenda (Fase 3) — escopo do motor de partida
+
+O motor (`src/game/`) é **puro e sem I/O**: recebe dois `MatchSquad` (11
+titulares + banco, atributos, estilo) e um seed, devolve um `MatchResult`
+determinístico (placar, eventos, estatísticas por jogador). Decisões
+registradas:
+
+- **Zona abstrata (0-4), não física contínua.** Modelar posição em grade
+  X/Y contínua com colisão/movimento por jogador é um projeto à parte (e
+  não determinístico o suficiente para testar/auditar sem uma engine de
+  física real). O briefing pede "não usar LLM para física/movimentação" —
+  a alternativa não-LLM mais simples que ainda produz motor real e
+  testável é discretizar o campo em 5 zonas (área do mandante → terço →
+  meio-campo → terço → área do visitante) e resolver cada minuto como uma
+  disputa de atributos (ataque vs defesa), não uma simulação espacial.
+  Revisitar isso é um projeto de polimento futuro, não um bloqueador para
+  ter um motor real funcionando.
+- **RNG seedada e determinística** (`src/game/domain/rng.ts`), não
+  `Math.random()`. O mesmo seed sempre produz o mesmo jogo — isso é o que
+  permite auditoria anti-cheat (`Match.simulationSeed`, já modelado no
+  schema desde a Fase 1) e testes de regressão reais no motor.
+- **Sem persistência em `Match`/`Team`/`Season` ainda.** Essas entidades
+  modelam estrutura competitiva real (temporada, competição, elenco de
+  clube) que não existe até a Fase 4 (Career/calendário) e Fase 5
+  (Competitions). Forçar uma partida de teste a preencher essas FKs
+  exigiria fabricar registros falsos de temporada/clube só para satisfazer
+  o schema — poluindo dados reais com fixtures de teste. Em vez disso, o
+  motor emite `MATCH_STARTED`/`MATCH_FINISHED` no event bus (já modelado
+  na Fase 1); a Fase 4/5 é quem vai persistir de verdade, quando houver um
+  calendário/competição real para a partida pertencer.
+- **Goleiro manual (controle do usuário por botão) fica para depois.**
+  Interação ao vivo por botão a cada lance exige uma camada de UI Discord
+  com estado por partida/timers que ainda não existe (é um projeto de
+  interface à parte, não do motor). O motor já modela o goleiro
+  estatisticamente (reflexo/posicionamento/1x1/pênaltis) — controle manual
+  é uma camada de override em cima disso, adicionada quando a UI ao vivo
+  existir.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que
