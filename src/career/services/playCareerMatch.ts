@@ -1,7 +1,10 @@
 import type { CareerStage } from "@prisma/client";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
-import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
+import { ageFromBirthDate } from "../../economy/domain/marketValue.js";
+import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
+import { ensureContract } from "../../economy/services/ensureContract.js";
+import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
 import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
@@ -17,7 +20,7 @@ import { decideLineupStatus, type LineupStatus } from "../domain/lineup.js";
 import { nextCareerStage } from "../domain/progression.js";
 import type { CareerRepository } from "../ports/careerRepository.js";
 import { ensureCareerStarted } from "./ensureCareerStarted.js";
-import { buildLeagueTeams, ensureRivalTeams, leagueNameFor } from "./ensureLeagueTeams.js";
+import { buildLeagueTeams, ensureRivalTeams, ensureStarterTeam, leagueNameFor } from "./ensureLeagueTeams.js";
 
 const ALL_STYLES: TeamStyle[] = ["DEFENSIVE", "AGGRESSIVE", "POSSESSION", "COUNTER_ATTACK", "DRIBBLING", "TACTICAL"];
 
@@ -35,6 +38,7 @@ export interface PlayCareerMatchDeps {
   competitionRepository: CompetitionRepository;
   matchRepository: MatchRepository;
   walletRepository: WalletRepository;
+  marketRepository: MarketRepository;
   events: EventBus;
 }
 
@@ -56,6 +60,7 @@ export interface PlayCareerMatchOutput {
   newStage: CareerStage;
   injuryOccurred: boolean;
   coinsEarned: number;
+  salaryPaid: number;
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
@@ -63,10 +68,15 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   const { player, career, club, team, season } = await ensureCareerStarted(deps, input.discordId);
 
   const rivals = await ensureRivalTeams(deps.careerRepository, season.id);
+  // League membership (starter club + 6 rivals) is fixed independent of
+  // which club the player currently represents — see ensureStarterTeam's
+  // doc comment. Using `team`/`club` here instead would duplicate an
+  // entry once the player has transferred into one of the rivals.
+  const starter = await ensureStarterTeam(deps.careerRepository, player.nationality, season.id);
   const { tournamentId } = await deps.competitionRepository.getOrCreateSeasonLeague({
     seasonId: season.id,
     competitionName: leagueNameFor(player.nationality),
-    teams: buildLeagueTeams(team.id, club.name, rivals),
+    teams: buildLeagueTeams(starter.teamId, starter.teamName, rivals),
   });
 
   const fixture = await deps.competitionRepository.getNextFixtureForTeam(tournamentId, team.id);
@@ -77,9 +87,12 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   const isPlayerHome = fixture.homeTeamId === team.id;
   const opponentTeamId = isPlayerHome ? fixture.awayTeamId : fixture.homeTeamId;
   const opponentName = isPlayerHome ? fixture.awayTeamName : fixture.homeTeamName;
-  const opponentRival = rivals.find((rival) => rival.teamId === opponentTeamId);
-  if (!opponentRival) {
-    throw new Error(`Internal error: fixture opponent ${opponentTeamId} is not a known rival team`);
+  // Resolved generically by team, not looked up in `rivals` — after a
+  // transfer, an opponent can be the player's OLD (now purely synthetic)
+  // club, which was never part of the fixed rival pool to begin with.
+  const opponentClub = await deps.careerRepository.getClubByTeamId(opponentTeamId);
+  if (!opponentClub) {
+    throw new Error(`Internal error: fixture opponent team ${opponentTeamId} has no club`);
   }
 
   const hasActiveInjury = await deps.careerRepository.hasActiveInjury(player.id, now);
@@ -97,7 +110,7 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     teamId: opponentTeamId,
     teamName: opponentName,
     style: randomStyle(squadRng),
-    avgOverall: opponentRival.club.reputation + 15,
+    avgOverall: opponentClub.reputation + 15,
     rng: squadRng,
   });
 
@@ -151,6 +164,28 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     coinsEarned = reward.amount;
   }
 
+  // Salary is contractual, not performance-based — paid every match
+  // regardless of starting/bench/result, unlike the reward above.
+  const contract = await ensureContract(
+    { marketRepository: deps.marketRepository },
+    {
+      playerId: player.id,
+      clubId: club.id,
+      playerOverall: player.overall,
+      playerAge: ageFromBirthDate(player.birthDate, now),
+      now,
+    },
+  );
+  const salaryResult = await deps.walletRepository.applyTransaction({
+    userId: player.userId,
+    currency: "COINS",
+    type: "SOURCE",
+    amount: BigInt(contract.salary),
+    reason: "SALARY",
+    idempotencyKey: `salary:${fixture.matchId}`,
+  });
+  const salaryPaid = salaryResult.alreadyApplied ? 0 : contract.salary;
+
   const injuredInMatch = result.events.some((event) => event.type === "INJURY" && event.playerId === matchPlayerInputId);
   if (injuredInMatch) {
     const rolled = rollInjury(createRng(`${seed}:injury`), now);
@@ -180,5 +215,6 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     newStage: proposedStage,
     injuryOccurred: injuredInMatch,
     coinsEarned,
+    salaryPaid,
   };
 }

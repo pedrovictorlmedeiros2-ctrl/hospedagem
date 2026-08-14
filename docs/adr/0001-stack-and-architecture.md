@@ -264,6 +264,70 @@ Decisões de escopo:
   mesma categoria de risco aceito que os pesos de IA do motor de partida
   (Risco #12).
 
+## Adenda (Fase 6b) — mercado, contratos e transferências fecham a Fase 6
+
+Continuação direta da adenda anterior: implementa o restante do escopo
+original da Fase 6 ("mercado; transferências; contratos") que havia sido
+conscientemente adiado.
+
+Decisões de escopo e arquitetura:
+
+- **`ensureCareerStarted` tinha um bug estrutural que bloqueava
+  transferências de verdade.** Ele sempre reresolvia o clube do jogador
+  por `starter-club:<nacionalidade>`, nunca lendo `Career.currentClubId`
+  — então mesmo que uma transferência atualizasse esse campo, a próxima
+  chamada de qualquer comando de carreira devolvia o jogador ao clube
+  inicial silenciosamente. Corrigido: o clube atual agora vem de
+  `career.currentClubId` (via novo `CareerRepository.getClubById`)
+  sempre que a carreira já existe; a resolução por nacionalidade só roda
+  no bootstrap de uma carreira nova. `CareerRepository` ganhou também
+  `getClubByTeamId` (resolve o clube adversário genericamente, não só
+  pela lista fixa de rivais — necessário porque depois de uma
+  transferência o adversário pode ser o antigo clube do jogador, que
+  nunca esteve na lista de rivais), `leaveRoster` e `updateCareerClub`.
+- **A composição da liga (`buildLeagueTeams`) não pode depender do clube
+  ATUAL do jogador.** Bug real encontrado pelos próprios testes (não por
+  revisão manual): ao gerar a liga usando o time atual do jogador
+  pós-transferência, esse time já é um dos 6 rivais, duplicando um id e
+  derrubando `generateRoundRobinFixtures`. Corrigido com
+  `ensureStarterTeam` — a composição da liga (clube inicial fixo da
+  nacionalidade + 6 rivais) é resolvida independentemente de quem
+  atualmente representa qual clube. Reforça a mesma decisão da Fase 5:
+  a liga é "mundo compartilhado", não recalculada por jogador.
+- **Transferência paga um bônus de assinatura (15% da taxa), não a taxa
+  inteira.** Pagar a taxa completa ao jogador a cada transferência
+  permitiria farm de coins saltando repetidamente entre os 6 rivais.
+  Modelado de forma mais realista também: no futebol de verdade a taxa é
+  paga pelo clube comprador ao clube vendedor, não ao jogador — só um
+  bônus de assinatura é dele. `Transfer.fee` continua registrando a taxa
+  cheia (para histórico/flavor), só o valor efetivamente creditado na
+  carteira é menor.
+- **Cooldown real de 30 dias entre transferências**
+  (`canTransferNow`/`MIN_DAYS_BETWEEN_TRANSFERS`), não só uma
+  `idempotencyKey`. Uma idempotencyKey por dia protegeria só contra
+  repetir a MESMA transferência no mesmo dia — sem um cooldown de
+  verdade, nada impediria encadear transferências para clubes
+  DIFERENTES em sequência. Mesmo padrão de `TrainingCooldownError`.
+- **Proposta de transferência é determinística, não persistida.** Igual
+  ao truque já usado no treino intensivo (Fase 6): a oferta de cada
+  clube é derivada de um RNG seedado por (jogador, clube, dia do
+  calendário) — `/propostas` (consulta) e `/transferir` (aceite) sempre
+  concordam no mesmo valor no mesmo dia sem precisar de uma tabela nova
+  de propostas pendentes.
+- **Transferência só entre o clube atual e os 6 rivais da MESMA liga
+  (mesma nacionalidade).** Transferência internacional exigiria unir
+  duas ligas/calendários distintos — fora de escopo. Também não é
+  possível voltar ao clube inicial depois de sair dele (não faz parte do
+  pool de rivais) — limitação aceita do modelo de pool fixo, documentada
+  no ROADMAP.
+- **Mercado de compra/venda de jogadores sintéticos não foi
+  implementado, e não é um adiamento — é incompatível com a arquitetura
+  atual.** Só existe UM jogador real por partida simulada (Fase 3); os
+  outros 21 são sintéticos e regenerados a cada partida, não são
+  entidades persistentes negociáveis. Um mercado de compra/venda faria
+  sentido para uma arquitetura com elencos multi-jogador-real, que este
+  produto não tem.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

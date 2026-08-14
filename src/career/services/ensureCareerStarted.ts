@@ -1,8 +1,6 @@
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import { ProfileNotFoundError } from "../../player/domain/errors.js";
 import type { PlayerRecord, PlayerRepository } from "../../player/ports/playerRepository.js";
-import { createRng } from "../../game/domain/rng.js";
-import { generateClubName, starterClubKeyFor } from "../domain/clubNaming.js";
 import type {
   CareerRecord,
   CareerRepository,
@@ -10,9 +8,7 @@ import type {
   SeasonRecord,
   TeamRecord,
 } from "../ports/careerRepository.js";
-
-const STARTER_CLUB_TIER = 4;
-const STARTER_CLUB_REPUTATION = 25;
+import { ensureStarterTeam } from "./ensureLeagueTeams.js";
 
 export interface EnsureCareerStartedDeps {
   userRepository: UserRepository;
@@ -46,28 +42,32 @@ export async function ensureCareerStarted(
   }
 
   const season = await deps.careerRepository.getOrCreateActiveSeason();
+  const existingCareer = await deps.careerRepository.getCareer(player.id);
 
-  const rng = createRng(starterClubKeyFor(player.nationality));
-  const club = await deps.careerRepository.getOrCreateClub({
-    externalKey: starterClubKeyFor(player.nationality),
-    name: generateClubName(rng),
-    country: player.nationality,
-    tier: STARTER_CLUB_TIER,
-    reputation: STARTER_CLUB_REPUTATION,
-  });
+  // Once a career exists, its `currentClubId` is the source of truth for
+  // which club the player represents — NOT always the deterministic
+  // starter club. This is what makes a transfer (career/services/
+  // acceptTransferOffer.ts) actually stick: it updates `currentClubId`,
+  // and every subsequent call here (every /carreira, /treinar,
+  // /jogar-carreira) must pick that up instead of silently re-resolving
+  // back to the starter club by nationality.
+  let club: ClubRecord;
+  let team: TeamRecord;
+  if (existingCareer?.currentClubId) {
+    club = await deps.careerRepository.getClubById(existingCareer.currentClubId);
+    team = await deps.careerRepository.getOrCreateTeam({ clubId: club.id, seasonId: season.id, name: club.name });
+  } else {
+    const starter = await ensureStarterTeam(deps.careerRepository, player.nationality, season.id);
+    club = starter.club;
+    team = { id: starter.teamId, name: starter.teamName, clubId: starter.club.id, seasonId: season.id };
+  }
 
-  const team = await deps.careerRepository.getOrCreateTeam({
-    clubId: club.id,
-    seasonId: season.id,
-    name: club.name,
-  });
   await deps.careerRepository.ensureOnRoster({
     teamId: team.id,
     playerId: player.id,
     squadNumber: player.shirtNumber,
   });
 
-  const existingCareer = await deps.careerRepository.getCareer(player.id);
   const career =
     existingCareer ??
     (await deps.careerRepository.createCareer({

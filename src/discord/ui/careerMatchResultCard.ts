@@ -35,7 +35,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
     `**${homeName} ${result.homeScore} x ${result.awayScore} ${awayName}**`,
     `Posse de bola — você: ${playerPossessionPct}% • ${match.opponentName}: ${100 - playerPossessionPct}%`,
     match.lineupStatus === "STARTING" ? "Você começou entre os titulares." : "Você começou no banco.",
-    `🪙 +${match.coinsEarned} coins`,
+    `🪙 +${match.coinsEarned} coins (recompensa) • +${match.salaryPaid} coins (salário)`,
   ];
 
   const container = new ContainerBuilder()

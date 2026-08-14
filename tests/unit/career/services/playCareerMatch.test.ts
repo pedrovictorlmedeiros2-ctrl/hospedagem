@@ -5,6 +5,7 @@ import { SeasonCompleteError } from "../../../../src/career/domain/errors.js";
 import { nextCareerStage } from "../../../../src/career/domain/progression.js";
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
+import { InMemoryMarketRepository } from "../../../../src/economy/adapters/inMemoryMarketRepository.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
@@ -25,6 +26,7 @@ function makeDeps() {
     competitionRepository: new InMemoryCompetitionRepository(),
     matchRepository: new InMemoryMatchRepository(),
     walletRepository: new InMemoryWalletRepository(),
+    marketRepository: new InMemoryMarketRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -57,7 +59,7 @@ describe("playCareerMatch", () => {
     expect(match.lineupStatus).toBe("STARTING");
   });
 
-  it("grants a coin reward that lands in the wallet, matching the reported coinsEarned", async () => {
+  it("grants a coin reward and a salary payment that together land in the wallet", async () => {
     const deps = makeDeps();
     await createPlayerProfile(deps, profileInput());
     const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
@@ -65,8 +67,9 @@ describe("playCareerMatch", () => {
     const match = await playCareerMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
 
     expect(match.coinsEarned).toBeGreaterThan(0);
+    expect(match.salaryPaid).toBeGreaterThan(0);
     const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
-    expect(wallet.coins).toBe(BigInt(match.coinsEarned));
+    expect(wallet.coins).toBe(BigInt(match.coinsEarned + match.salaryPaid));
   });
 
   it("emits MATCH_STARTED and MATCH_FINISHED", async () => {

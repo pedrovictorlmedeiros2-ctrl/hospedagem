@@ -19,8 +19,10 @@ const ACTIVE_SEASON_NUMBER = 1;
 export class InMemoryCareerRepository implements CareerRepository {
   private season: SeasonRecord | null = null;
   private readonly clubsByKey = new Map<string, ClubRecord>();
+  private readonly clubsById = new Map<string, ClubRecord>();
   private readonly teamsByClubSeason = new Map<string, TeamRecord>();
-  private readonly roster = new Set<string>(); // `${teamId}:${playerId}`
+  private readonly teamsById = new Map<string, TeamRecord>();
+  private readonly rosterByTeam = new Map<string, Set<string>>(); // teamId -> active playerIds
   private readonly careersByPlayerId = new Map<string, CareerRecord>();
   private readonly injuriesByPlayerId = new Map<string, RecordInjuryInput[]>();
 
@@ -47,7 +49,22 @@ export class InMemoryCareerRepository implements CareerRepository {
       reputation: input.reputation,
     };
     this.clubsByKey.set(input.externalKey, club);
+    this.clubsById.set(club.id, club);
     return club;
+  }
+
+  async getClubById(clubId: string): Promise<ClubRecord> {
+    const club = this.clubsById.get(clubId);
+    if (!club) {
+      throw new Error(`Internal error: no club with id ${clubId}`);
+    }
+    return club;
+  }
+
+  async getClubByTeamId(teamId: string): Promise<ClubRecord | null> {
+    const team = this.teamsById.get(teamId);
+    if (!team?.clubId) return null;
+    return this.clubsById.get(team.clubId) ?? null;
   }
 
   async getOrCreateTeam(input: GetOrCreateTeamInput): Promise<TeamRecord> {
@@ -62,11 +79,18 @@ export class InMemoryCareerRepository implements CareerRepository {
       seasonId: input.seasonId,
     };
     this.teamsByClubSeason.set(key, team);
+    this.teamsById.set(team.id, team);
     return team;
   }
 
   async ensureOnRoster(input: EnsureOnRosterInput): Promise<void> {
-    this.roster.add(`${input.teamId}:${input.playerId}`);
+    const members = this.rosterByTeam.get(input.teamId) ?? new Set<string>();
+    members.add(input.playerId);
+    this.rosterByTeam.set(input.teamId, members);
+  }
+
+  async leaveRoster(teamId: string, playerId: string, _now: Date): Promise<void> {
+    this.rosterByTeam.get(teamId)?.delete(playerId);
   }
 
   async getCareer(playerId: string): Promise<CareerRecord | null> {
@@ -95,6 +119,16 @@ export class InMemoryCareerRepository implements CareerRepository {
       throw new Error(`Internal error: no career for player ${playerId}`);
     }
     const updated = { ...existing, stage };
+    this.careersByPlayerId.set(playerId, updated);
+    return updated;
+  }
+
+  async updateCareerClub(playerId: string, clubId: string): Promise<CareerRecord> {
+    const existing = this.careersByPlayerId.get(playerId);
+    if (!existing) {
+      throw new Error(`Internal error: no career for player ${playerId}`);
+    }
+    const updated = { ...existing, currentClubId: clubId };
     this.careersByPlayerId.set(playerId, updated);
     return updated;
   }

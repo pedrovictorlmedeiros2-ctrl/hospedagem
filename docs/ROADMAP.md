@@ -12,7 +12,7 @@ briefing original do produto.
 | 3 | Game Engine (núcleo da partida, IA) | 🟡 Núcleo implementado e testado; sem persistência nem UI ao vivo ainda | Motor puro/determinístico + `/simular-amistoso`, 34 testes novos. Ver seção "O que a Fase 3 entrega" abaixo e adenda em docs/adr/0001 |
 | 4 | Career (treino, escalação, calendário) | 🟡 Implementado e testado; primeira partida com persistência real | `/carreira`, `/treinar`, `/jogar-carreira`, 19 testes novos (137 no total). Ver seção "O que a Fase 4 entrega" abaixo |
 | 5 | Competitions (ligas, copas, temporadas, seleção) | 🟡 Liga real implementada e testada; mata-mata só no domínio; seleção adiada | `/classificacao`, calendário turno/returno real, 26 testes novos (169 no total). Ver seção "O que a Fase 5 entrega" abaixo |
-| 6 | Economy (coins, mercado, transferências, contratos) | 🟡 Coins + recompensas + 1 sink implementados e testados; mercado/transferências/contratos NÃO iniciados | `/carteira`, recompensa de partida integrada ao `/jogar-carreira`, treino intensivo pago, 19 testes novos (188 no total). Ver seção "O que a Fase 6 entrega" abaixo |
+| 6 | Economy (coins, mercado, transferências, contratos) | ✅ Implementada e testada — coins, recompensas, treino intensivo, contratos com salário e transferências entre clubes da liga | `/carteira`, `/contrato`, `/propostas`, `/transferir`, 52 testes novos (221 no total). Ver seção "O que a Fase 6 entrega" abaixo |
 | 7 | Cards (cartas, packs, inventário) | ⏳ Não iniciada | Schema já modelado (Card/CardPack/PackOdds/UserCard) |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ⏳ Não iniciada | Schema já modelado (Duel) |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ⏳ Não iniciada | Schema já modelado (RankingSnapshot/Record/Rivalry) |
@@ -228,94 +228,142 @@ realista).
 
 ## O que a Fase 6 entrega
 
-`src/economy/` segue o mesmo padrão hexagonal das demais fases:
-domínio puro (`domain/matchReward.ts`, `domain/errors.ts`) → porta
-(`ports/walletRepository.ts`) → adapters Prisma real + in-memory
-(`adapters/`) → serviços (`services/grantMatchReward.ts`,
-`services/viewWallet.ts`). `Wallet`/`WalletTransaction` já existiam no
-schema desde a Fase 1 como ledger append-only; esta fase é a primeira a
-escrever de verdade neles.
+`src/economy/` segue o mesmo padrão hexagonal das demais fases: domínio
+puro (`domain/matchReward.ts`, `domain/marketValue.ts`,
+`domain/contract.ts`, `domain/transferOffer.ts`, `domain/errors.ts`) →
+portas (`ports/walletRepository.ts`, `ports/marketRepository.ts`) →
+adapters Prisma real + in-memory (`adapters/`) → serviços
+(`services/grantMatchReward.ts`, `services/viewWallet.ts`,
+`services/ensureContract.ts`, `services/viewContract.ts`,
+`services/listTransferOffers.ts`, `services/acceptTransferOffer.ts`).
+`Wallet`/`WalletTransaction`/`Contract`/`Transfer` já existiam no schema
+desde a Fase 1; esta fase é a primeira a escrever de verdade neles.
 
-**Escopo desta fase, e por quê é menor que "Fase 6" no plano original.**
-O plano original define a Fase 6 como "Coins; recompensas; mercado;
-transferências; contratos". Implementei a parte que é pré-requisito de
-segurança para qualquer economia (o ledger + as regras de
-duplicação/corrida) mais UMA fonte (recompensa de partida) e UM sumidouro
-(treino intensivo pago) — e deliberadamente NÃO tentei mercado/
-transferências/contratos na mesma passada. Motivo: um sistema de mercado
-de verdade precisa de avaliação de valor de mercado, um state machine de
-proposta/contraproposta/expiração, e IA de clubes decidindo o que aceitar
-— construir isso rápido, na mesma fase que a fundação do ledger, é
-exatamente o tipo de decisão que a regra fundamental deste projeto pede
-para eu recusar: arriscaria entregar uma economia mal testada e
-potencialmente explorável só para "bater o requisito" da fase. Prefiro
-entregar o ledger sólido e auditável agora, e mercado/transferências/
-contratos como continuação depois — ver Risco #4 atualizado abaixo.
+A fase foi entregue em duas passadas. A primeira cobriu o ledger, uma
+fonte (recompensa de partida) e um sumidouro (treino intensivo) —
+deliberadamente sem mercado/transferências/contratos ainda, porque
+construir um sistema de negociação completo na mesma passada que a
+fundação do ledger arriscaria entregar algo mal testado. A segunda
+passada fechou o restante do escopo original ("mercado; transferências;
+contratos"), incluindo um refactor estrutural que se revelou necessário
+no caminho — ver abaixo.
 
-**Como o dinheiro entra (source) e sai (sink) hoje:**
-- **Recompensa de partida** (`economy/domain/matchReward.ts`): calculada
-  a partir de titular/banco, resultado (vitória/empate/derrota), gols,
-  assistências e nota. Banco sempre recebe um valor fixo pequeno,
-  independente do resultado (nunca zero, nunca dependente de uma partida
-  que o jogador não disputou); titular ganha um piso maior mais bônus por
-  gol/assistência/nota alta ("man of the match"). Pesos calibrados no
-  olho para um v1, mesmo risco aceito dos pesos de IA do motor (ver
-  Risco #12).
-- **Treino intensivo** (`career/domain/training.ts` +
-  `career/services/trainPlayer.ts`): opção paga em `/treinar` que dobra o
-  ganho da MESMA sessão, sem tocar no cooldown de 20h nem no custo de
-  estamina — coins compram um resultado melhor da sessão que você já
-  teria, nunca uma sessão extra, o que fecha a via óbvia de exploração
-  (comprar treino ilimitado).
+**Como o dinheiro entra (source) e sai (sink):**
+- **Recompensa de partida** (`economy/domain/matchReward.ts`): titular
+  vs banco, resultado, gols/assistências, nota alta ("man of the
+  match"). Banco sempre recebe um valor fixo pequeno, nunca zero.
+- **Salário** (`economy/domain/contract.ts`, pago em `playCareerMatch`):
+  contratual, não depende de desempenho — pago toda partida,
+  independente de resultado ou de o jogador ter começado no banco.
+- **Bônus de assinatura de transferência** (`economy/domain/
+  transferOffer.ts`, `services/acceptTransferOffer.ts`): 15% da taxa de
+  transferência negociada — não a taxa inteira (ver "proteção
+  antiexploração" abaixo).
+- **Treino intensivo** (sumidouro, `career/services/trainPlayer.ts`):
+  dobra o ganho da MESMA sessão de `/treinar` por coins, sem tocar no
+  cooldown nem no custo de estamina.
 
-**Como a integridade é garantida:**
-`WalletRepository.applyTransaction` é o ÚNICO ponto que pode tocar
-`Wallet.coins`/`Wallet.tokens`, e sempre em conjunto com uma linha
-`WalletTransaction` — nunca um sem o outro. Toda chamada carrega um
-`idempotencyKey` (`@unique` no schema): uma chamada repetida com a mesma
-chave (retry de rede, corrida entre duas requisições concorrentes) nunca
-aplica duas vezes, ela lê a transação já gravada e devolve o mesmo saldo.
-No adapter Prisma isso é: `$transaction` que faz `increment`/`decrement`
-atômico e só então tenta criar a `WalletTransaction`; se a chave já
-existe, a criação falha com `P2002`, o que desfaz TODA a transação
-(inclusive o increment) automaticamente — o padrão já usado em
-`PrismaUserRepository`/`PrismaCareerRepository`. No adapter in-memory
-(usado nos testes), o mesmo efeito vem de nunca haver um `await` entre a
-checagem de idempotência e a escrita, o que no runtime single-threaded do
-Node é suficiente para ser atômico entre chamadas concorrentes — testado
-explicitamente com `Promise.all` de duas chamadas idênticas concorrentes.
-Um SINK que deixaria o saldo negativo é rejeitado (`InsufficientFundsError`)
-sem tocar o saldo.
+Pesos de recompensa/valor de mercado são heurística ajustada no olho para
+um v1, mesma categoria de risco aceito dos pesos de IA do motor (Risco
+#12).
 
-Um efeito colateral bom: como a recompensa de partida usa
-`match-reward:${matchId}` como chave, mesmo a corrida já documentada e
-aceita entre duas chamadas concorrentes de `/jogar-carreira` (Risco #17
-adaptado, ver `getNextFixtureForTeam`) não pode pagar a recompensa duas
-vezes para a mesma partida — a idempotência do wallet cobre esse caso de
-graça.
+**Contratos** (`/contrato`): todo jogador com carreira ativa tem um
+contrato com o clube atual — salário por partida e cláusula de rescisão
+derivados do valor de mercado (`calculateMarketValue`: cresce com
+overall, cai com idade fora do auge). `ensureContract` é um bootstrap
+idempotente (mesmo padrão de `ensureCareerStarted`): assina um contrato
+novo quando não existe nenhum, quando o anterior expirou (180 dias), ou
+quando ficou órfão de um clube que o jogador já deixou.
 
-**O que foi validado de verdade:** 19 testes novos (188 no total):
-cálculo puro de recompensa (banco vs titular, vitória > empate > derrota,
-bônus de gol/assistência/nota), o `InMemoryWalletRepository` (crédito,
-débito, saldo insuficiente não muda o saldo, idempotência em chamada
-repetida E em chamada concorrente via `Promise.all`, histórico
-paginado/mais recente primeiro, carteiras isoladas por usuário),
-`grantMatchReward` (valor bate com o cálculo puro, nunca paga duas vezes
-pelo mesmo `matchId`), `viewWallet`, e um teste de integração em
-`playCareerMatch` confirmando que o saldo na carteira bate exatamente com
-`coinsEarned` retornado. `/treinar` ganhou testes para a sessão intensiva
-(cobra o valor certo, dobra o ganho, rejeita com `InsufficientFundsError`
-quando o saldo não cobre).
+**Transferências** (`/propostas`, `/transferir`): os 6 clubes rivais da
+liga do jogador podem fazer propostas por ele, disponíveis quando o
+overall do jogador atinge um piso relativo à reputação do clube
+interessado (hoje todos os rivais têm a mesma reputação fixa — ver
+limitação abaixo). A proposta do dia é **determinística**: derivada de
+um RNG seedado por (jogador, clube, dia do calendário), o mesmo truque de
+`career/services/trainPlayer.ts` para o treino intensivo — `/propostas`
+(consulta) e `/transferir` (aceite) sempre concordam no mesmo valor sem
+precisar persistir uma proposta à parte. Aceitar uma proposta: encerra o
+contrato antigo, tira o jogador do elenco do clube atual, coloca no
+elenco do novo, atualiza `Career.currentClubId`, grava um `Transfer` e
+assina um contrato novo.
 
-**O que NÃO foi implementado ainda (ver Risco #4 atualizado):**
-- **Mercado (comprar/vender jogadores sintéticos ou vagas).** Nenhum
-  código.
-- **Transferências entre clubes/jogadores.** `Transfer` está modelado no
-  schema, sem lógica de aplicação.
-- **Contratos e salários.** `Contract` está modelado no schema, sem
-  lógica de aplicação.
-- **Tokens** (segunda moeda modelada em `Wallet.tokens`) não tem nenhuma
-  fonte ou sumidouro ainda — só existe porque o schema já a previa.
-- **Limites/tetos de saldo** não foram implementados — não há hoje
-  nenhum mecanismo que faria o saldo crescer rápido o bastante para isso
-  importar, mas é algo a revisar quando mercado/apostas existirem.
+**Proteção antiexploração da transferência** (o ponto mais arriscado
+desta fase): pagar a taxa de transferência INTEIRA ao jogador a cada
+transferência permitiria farm de coins quase ilimitado saltando entre os
+6 rivais repetidamente. Duas mitigações independentes: (1) o jogador
+recebe só um bônus de assinatura (15% da taxa) — a taxa em si é só
+registro histórico no `Transfer.fee`, como no futebol real, onde quem
+paga a taxa é o clube comprador ao clube vendedor, não ao jogador; (2)
+cooldown real de 30 dias entre transferências (`canTransferNow`, mesmo
+formato de `canTrainNow`), então mesmo o bônus reduzido não pode ser
+repetido em sequência.
+
+**Refactor estrutural necessário: `ensureCareerStarted` ignorava
+`Career.currentClubId`.** Ao implementar a transferência, descobri que
+`ensureCareerStarted` sempre reresolvia o clube pela nacionalidade do
+jogador (`starter-club:<nacionalidade>`), nunca lendo
+`career.currentClubId` — ou seja, mesmo se uma transferência atualizasse
+esse campo, a próxima chamada de `/carreira`, `/treinar` ou
+`/jogar-carreira` ignorava silenciosamente e devolvia o jogador ao clube
+inicial. Corrigido: quando a carreira já existe, o clube atual vem de
+`careerRepository.getClubById(career.currentClubId)`; a resolução por
+nacionalidade só roda no bootstrap de uma carreira nova. Isso exigiu
+adicionar `getClubById`, `getClubByTeamId`, `leaveRoster` e
+`updateCareerClub` à `CareerRepository` (Prisma + in-memory), e
+generalizar a resolução do clube adversário em `playCareerMatch` (antes
+buscava só na lista fixa de rivais via `rivals.find(...)`, o que quebra
+quando o adversário é o antigo clube do jogador, que nunca esteve nessa
+lista).
+
+**Segundo bug real, encontrado pelos próprios testes (não por revisão
+manual):** depois do refactor acima, `buildLeagueTeams` continuava usando
+o clube ATUAL do jogador para montar a lista de times da liga — depois de
+uma transferência, esse clube já é um dos 6 rivais, duplicando um id de
+time e derrubando `generateRoundRobinFixtures` ("duplicate team id") na
+primeira vez que a liga fosse gerada para um jogador já transferido.
+Corrigido com `ensureStarterTeam` (`career/services/
+ensureLeagueTeams.ts`): a composição da liga (clube inicial + 6 rivais)
+agora é resolvida a partir do clube inicial FIXO da nacionalidade,
+nunca do clube atual do jogador — a liga não muda de membros só porque
+alguém trocou de clube dentro dela. Adicionado teste de regressão
+específico para este cenário.
+
+**O que foi validado de verdade:** 52 testes novos desde a Fase 5 (221
+no total): cálculo de recompensa/valor de mercado/contrato/proposta de
+transferência (puro), `InMemoryWalletRepository` e
+`InMemoryMarketRepository` (crédito/débito, saldo insuficiente não muda
+o saldo, idempotência em chamada repetida E concorrente via
+`Promise.all`), `ensureContract` (assina/renova/idempotente),
+`listTransferOffers`/`acceptTransferOffer` (proposta bate entre consulta
+e aceite, bônus menor que a taxa, cooldown bloqueia segunda
+transferência, clube desconhecido rejeitado, transferência bloqueada com
+lesão ativa), integração completa em `playCareerMatch` (recompensa +
+salário somados batem com o saldo da carteira; depois de uma
+transferência, a próxima partida já reflete o novo clube; a liga
+continua com exatamente 7 clubes distintos, não duplicados).
+
+**O que NÃO foi implementado (decisão consciente, não esquecido):**
+- **Mercado de compra/venda de jogadores sintéticos.** A arquitetura do
+  jogo (Fase 3) tem só UM jogador real por partida simulada — os outros
+  21 são gerados na hora, não são entidades persistentes negociáveis.
+  Um mercado de compra/venda faria sentido para uma arquitetura
+  multi-jogador-real-por-elenco, que este produto não tem hoje.
+- **Transferência internacional (entre ligas de nacionalidades
+  diferentes).** Só entre o clube atual e os 6 rivais da MESMA liga.
+- **Voltar ao clube inicial depois de sair dele.** O clube inicial não
+  faz parte do pool de rivais, então nunca aparece como destino de
+  proposta — uma vez que o jogador transfere para um rival, o caminho de
+  volta ao clube inicial não existe (limitação aceita do modelo de "pool
+  fixo de rivais").
+- **Empréstimos (`TransferType.LOAN`).** Só transferência permanente
+  (`PERMANENT`) está implementada; o enum já suporta `LOAN`/`FREE`, sem
+  lógica ainda.
+- **Diferenciação de reputação entre rivais.** Os 6 clubes rivais têm
+  reputação fixa idêntica (45, decisão da Fase 5) — o gate de overall
+  para receber proposta hoje é igual para todos, então não existe
+  "clube grande" vs "clube pequeno" de verdade ainda.
+- **Tokens** (segunda moeda) não tem fonte ou sumidouro — só existe
+  porque o schema já a previa.
+- **Limites/tetos de saldo** não implementados — nada hoje faria o saldo
+  crescer rápido o bastante para isso importar.

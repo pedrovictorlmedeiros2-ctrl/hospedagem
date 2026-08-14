@@ -4,13 +4,14 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 6 — Economy** parcialmente implementada e testada —
-coins, recompensa de partida e um sumidouro (treino intensivo pago) estão
-prontos com ledger auditável e à prova de duplicação/corrida; mercado,
-transferências e contratos ainda não foram iniciados (ver
-`docs/ROADMAP.md`). Fases 2 a 5 completas. A integração real com Discord
-e Postgres ainda não foi validada neste ambiente (sem credenciais) — ver
-`docs/ROADMAP.md` para o que "implementado" significa em cada fase, e
+Estado atual: **Fase 6 — Economy** implementada e testada dentro do
+escopo redefinido: coins, recompensa de partida, treino intensivo pago,
+contratos com salário por partida e transferências entre clubes da liga
+— tudo com ledger auditável e à prova de duplicação/corrida. Fases 2 a 5
+completas. A integração real com Discord e Postgres ainda não foi
+validada neste ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o
+que "implementado" significa em cada fase (inclusive o que ficou de fora
+do mercado/transferências por decisão consciente), e
 `docs/adr/0001-stack-and-architecture.md` para as decisões de
 arquitetura.
 
@@ -28,6 +29,9 @@ arquitetura.
 | `/jogar-carreira` | Joga a próxima rodada agendada da liga — persiste no banco, atualiza classificação/estatísticas, paga recompensa em coins e pode promover/lesionar o jogador |
 | `/classificacao` | Mostra a tabela da liga (pontos, saldo de gols, posição do seu clube) |
 | `/carteira` | Mostra seu saldo de coins e o histórico recente de movimentações |
+| `/contrato` | Mostra seu contrato atual: salário por partida, cláusula de rescisão e validade |
+| `/propostas` | Lista propostas de transferência de outros clubes da sua liga |
+| `/transferir` | Aceita uma proposta de transferência e assina com o novo clube |
 
 ## Stack
 

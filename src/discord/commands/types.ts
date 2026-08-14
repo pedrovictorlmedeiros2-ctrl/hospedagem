@@ -3,6 +3,7 @@ import type { ChatInputCommandInteraction } from "discord.js";
 import type { CareerRepository } from "../../career/ports/careerRepository.js";
 import type { TrainingRepository } from "../../career/ports/trainingRepository.js";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
+import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
@@ -21,6 +22,7 @@ export interface CommandContext {
   competitionRepository: CompetitionRepository;
   matchRepository: MatchRepository;
   walletRepository: WalletRepository;
+  marketRepository: MarketRepository;
 }
 
 /**

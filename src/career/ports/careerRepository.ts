@@ -76,11 +76,19 @@ export interface RecordInjuryInput {
 export interface CareerRepository {
   getOrCreateActiveSeason(): Promise<SeasonRecord>;
   getOrCreateClub(input: GetOrCreateClubInput): Promise<ClubRecord>;
+  /** Throws if the id doesn't exist — callers only ever pass a `Career.currentClubId` that was itself written by this repository, so a miss means data corruption, not a normal "not found". */
+  getClubById(clubId: string): Promise<ClubRecord>;
+  /** Resolves the club that owns a given Team — used to price/name an opponent generically (any team in the league), not just the fixed rival pool. Null only if the team has no club (e.g. a NATIONAL team, not applicable in the career flow). */
+  getClubByTeamId(teamId: string): Promise<ClubRecord | null>;
   getOrCreateTeam(input: GetOrCreateTeamInput): Promise<TeamRecord>;
   ensureOnRoster(input: EnsureOnRosterInput): Promise<void>;
+  /** Ends the player's active roster membership on a team (e.g. the losing side of a transfer). A no-op if they weren't on it. */
+  leaveRoster(teamId: string, playerId: string, now: Date): Promise<void>;
   getCareer(playerId: string): Promise<CareerRecord | null>;
   createCareer(input: CreateCareerInput): Promise<CareerRecord>;
   updateCareerStage(playerId: string, stage: CareerStage): Promise<CareerRecord>;
+  /** Points the career at a new current club — the roster move itself (leaveRoster + ensureOnRoster) is a separate call, see career/services (transfer flow). */
+  updateCareerClub(playerId: string, clubId: string): Promise<CareerRecord>;
   recordInjury(input: RecordInjuryInput): Promise<void>;
   /** True if the player has a recorded injury whose expected recovery date is still in the future. */
   hasActiveInjury(playerId: string, now: Date): Promise<boolean>;

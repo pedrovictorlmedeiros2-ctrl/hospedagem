@@ -75,6 +75,29 @@ export class PrismaCareerRepository implements CareerRepository {
     }
   }
 
+  async getClubById(clubId: string): Promise<ClubRecord> {
+    const club = await this.prisma.club.findUniqueOrThrow({ where: { id: clubId } });
+    return {
+      id: club.id,
+      name: club.name,
+      country: club.country,
+      tier: club.tier,
+      reputation: club.reputation,
+    };
+  }
+
+  async getClubByTeamId(teamId: string): Promise<ClubRecord | null> {
+    const team = await this.prisma.team.findUnique({ where: { id: teamId }, include: { club: true } });
+    if (!team?.club) return null;
+    return {
+      id: team.club.id,
+      name: team.club.name,
+      country: team.club.country,
+      tier: team.club.tier,
+      reputation: team.club.reputation,
+    };
+  }
+
   async getOrCreateTeam(input: GetOrCreateTeamInput): Promise<TeamRecord> {
     try {
       const team = await this.prisma.team.upsert({
@@ -109,6 +132,18 @@ export class PrismaCareerRepository implements CareerRepository {
     });
   }
 
+  async leaveRoster(teamId: string, playerId: string, now: Date): Promise<void> {
+    // updateMany, not update: the unique key on TeamPlayer includes
+    // joinedAt, so there's no single natural `where` for "the" active row
+    // — this closes out whichever row(s) are currently open (leftAt:
+    // null) for this player on this team, which is always exactly one in
+    // practice (ensureOnRoster never creates a second while one is open).
+    await this.prisma.teamPlayer.updateMany({
+      where: { teamId, playerId, leftAt: null },
+      data: { leftAt: now },
+    });
+  }
+
   async getCareer(playerId: string): Promise<CareerRecord | null> {
     const career = await this.prisma.career.findUnique({ where: { playerId } });
     return career ? this.toDomain(career) : null;
@@ -140,6 +175,11 @@ export class PrismaCareerRepository implements CareerRepository {
 
   async updateCareerStage(playerId: string, stage: CareerStage): Promise<CareerRecord> {
     const career = await this.prisma.career.update({ where: { playerId }, data: { stage } });
+    return this.toDomain(career);
+  }
+
+  async updateCareerClub(playerId: string, clubId: string): Promise<CareerRecord> {
+    const career = await this.prisma.career.update({ where: { playerId }, data: { currentClubId: clubId } });
     return this.toDomain(career);
   }
 

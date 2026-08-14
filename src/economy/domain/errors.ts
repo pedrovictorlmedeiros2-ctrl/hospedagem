@@ -6,3 +6,13 @@ export class InsufficientFundsError extends AppError {
     this.name = "InsufficientFundsError";
   }
 }
+
+export class TransferCooldownError extends AppError {
+  constructor(readonly daysRemaining: number) {
+    super(
+      "TRANSFER_COOLDOWN",
+      `Você já trocou de clube recentemente. Espere mais ${Math.ceil(daysRemaining)} dia(s) para uma nova transferência.`,
+    );
+    this.name = "TransferCooldownError";
+  }
+}
