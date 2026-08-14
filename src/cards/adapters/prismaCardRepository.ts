@@ -95,6 +95,16 @@ export class PrismaCardRepository implements CardRepository {
     return card ? this.toCardDomain(card) : null;
   }
 
+  async listAllCards(): Promise<CardRecord[]> {
+    const cards = await this.prisma.card.findMany();
+    return cards.map((card) => this.toCardDomain(card));
+  }
+
+  async findCardByName(name: string): Promise<CardRecord | null> {
+    const card = await this.prisma.card.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
+    return card ? this.toCardDomain(card) : null;
+  }
+
   async recordPackOpening(input: RecordPackOpeningInput): Promise<RecordPackOpeningOutput> {
     try {
       return await this.prisma.$transaction(async (tx) => {

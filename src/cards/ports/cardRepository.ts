@@ -76,6 +76,10 @@ export interface CardRepository {
   getPackOdds(packId: string): Promise<PackOddsRecord[]>;
   getCardsByRarity(rarity: CardRarity): Promise<CardRecord[]>;
   getCard(cardId: string): Promise<CardRecord | null>;
+  /** The whole fixed catalog — small enough (15 cards) to load in one call instead of one round trip per id. */
+  listAllCards(): Promise<CardRecord[]>;
+  /** Case-insensitive exact match on name — used by /carta and /favoritar, which take a name, not a catalog id. */
+  findCardByName(name: string): Promise<CardRecord | null>;
   /** Atomically records a PackOpening and the UserCard rows it produced. */
   recordPackOpening(input: RecordPackOpeningInput): Promise<RecordPackOpeningOutput>;
   listUserCards(userId: string): Promise<UserCardRecord[]>;

@@ -595,6 +595,68 @@ Decisões de arquitetura:
   do `Player.id` recebido no evento — nenhuma porta nova precisou ser
   criada só para isso.
 
+## Adenda (Fase 11) — Polish: fechando itens concretos já adiados, não uma auditoria genérica
+
+"Polish (UX, animações, acessibilidade, performance)" é, por natureza,
+um escopo vago se tratado como um item novo isolado — o próprio
+ROADMAP.md já registra que polish é "contínuo, revisado a cada fase
+anterior também", e de fato cada fase até aqui já revisou sua própria UX
+antes de ser marcada ✅. Em vez de inventar uma auditoria genérica sobre
+as 10 fases anteriores (trabalho não verificável e sem critério objetivo
+de "pronto"), esta fase fecha os itens de polish CONCRETOS que já tinham
+sido explicitamente adiados e registrados, com um dono claro no
+RISK_REGISTER.md ou no ROADMAP.md:
+
+- **Carta detalhada + favoritar (Risco #28).** `CardRepository.
+  setFavorite` já existia e já era testado desde a Fase 7 — só não tinha
+  comando Discord. `CardRepository` ganhou `findCardByName` (busca
+  case-insensitive por nome — os comandos usam nome, não o id interno do
+  catálogo) e `listAllCards`. Novos serviços `viewCardDetail` e
+  `toggleFavoriteCard`, comandos `/carta nome:...` e `/favoritar
+  nome:...`. **Favoritar é um toggle por nome de carta, não por cópia
+  específica** — cópias da mesma carta são fungíveis em tudo exceto
+  favorito/level (level sempre 1 hoje), então "qual cópia exatamente"
+  não é uma escolha que o usuário precisa fazer: se alguma cópia já está
+  favoritada, desfavorita; senão, favorita a primeira.
+- **N+1 em `viewCollection` (performance, achado durante o trabalho
+  acima).** O serviço chamava `cardRepository.getCard(cardId)` uma vez
+  por carta distinta na coleção do usuário. Como o catálogo é fixo e
+  pequeno (15 cartas), o custo real é desprezível, mas o padrão é
+  estruturalmente errado — `listAllCards()` chamado uma vez e indexado
+  em memória substitui as N chamadas por 2 chamadas fixas
+  (`listUserCards` + `listAllCards`), independente do tamanho da coleção.
+- **Log de erro vazando `DATABASE_URL` (Risco #9, identificado desde a
+  revisão de segurança da Fase 2, nunca mitigado até agora).** Um erro
+  de conexão do Prisma inclui a connection string inteira — com
+  credenciais — na própria mensagem, e tanto `discord/client.ts` (catch
+  de falha de comando) quanto `src/index.ts` (`unhandledRejection` e o
+  catch de topo de `main()`) logavam o `error` bruto. `shared/redact.ts`
+  (`redactSecrets`/`redactError`, puro e testado sem nenhum segredo real)
+  escova qualquer string `esquema://user:senha@host` antes do log — cobre
+  o caso estrutural sem precisar saber o valor do segredo — e também
+  aceita uma lista de valores conhecidos pra scrub literal, usada em
+  `index.ts` com `process.env["DATABASE_URL"]`/`DISCORD_BOT_TOKEN`/
+  `GROQ_API_KEY"]` (lidos direto de `process.env`, não do `env` já
+  validado, pra cobrir até uma falha do próprio `loadEnv()`).
+- **Acessibilidade — revisada, sem necessidade de mudança.** Todo card
+  Components V2 do projeto já combina cor de destaque com texto/emoji
+  redundante (ex.: gold + "🏆 NOVO RECORDE" no texto, nunca só a cor
+  sozinha carregando o significado) — checado nesta fase, sem achado
+  que exigisse correção.
+- **Animações — não aplicável a esta plataforma.** Comandos slash do
+  Discord com Components V2 são texto/embeds estáticos por natureza; não
+  existe API de animação client-side neste tipo de superfície. Registrado
+  aqui explicitamente para não parecer um item "esquecido" — é inaplicável
+  por design da plataforma, não uma lacuna.
+
+O que ficou deliberadamente fora: qualquer revisão dos pesos de
+IA/economia/sorteio (Riscos #12/#20/#29 — precisam de dados reais de uso,
+não de um ajuste "no olho" repetido), o gap de rollover de temporada
+(Risco #33 — feature grande, não polish), e o sistema de conquistas
+(Risco #35 — feature nova, não polish). Nenhum desses é "polimento" no
+sentido do produto já existente funcionar melhor; são lacunas de escopo
+maior que já têm dono e justificativa registrados em fases anteriores.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

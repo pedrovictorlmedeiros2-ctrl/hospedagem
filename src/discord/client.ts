@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import { isAppError } from "../shared/errors.js";
+import { redactError } from "../shared/redact.js";
 import { buildCommandRegistry } from "./commandRegistry.js";
 import type { CommandContext } from "./commands/types.js";
 
@@ -34,8 +35,11 @@ export function createDiscordClient(ctx: CreateClientDeps): Client {
         ? error.message
         : "Algo deu errado do nosso lado. Já registramos o erro — tenta de novo em instantes.";
 
+      // Redacted before it ever reaches the logger — a raw Prisma
+      // connection error can otherwise include the full DATABASE_URL,
+      // credentials and all, in its message (see RISK_REGISTER.md #9).
       logger.error(
-        { error, commandName: interaction.commandName, userId: interaction.user.id },
+        { error: redactError(error), commandName: interaction.commandName, userId: interaction.user.id },
         "command execution failed",
       );
 

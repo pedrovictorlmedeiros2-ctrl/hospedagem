@@ -17,7 +17,7 @@ briefing original do produto.
 | 8 | Multiplayer (matchmaking, duelos, rating) | ✅ Implementada e testada — desafio direto, duelo simulado com o motor real, rating ELO, recompensa em coins | `/duelo-desafiar`, `/duelo-responder`, `/duelos`, 29 testes novos (270 no total). Ver seção "O que a Fase 8 entrega" abaixo |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | 🟡 Ranking/recordes/rivalidades implementados e testados; rollover de temporada adiado (inalcançável no código atual, ver adenda) | `/ranking`, `/recordes`, `/rivalidade`, 29 testes novos (299 no total). Ver seção "O que a Fase 9 entrega" abaixo e adenda em docs/adr/0001 |
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ✅ Implementada e testada — funciona sem `GROQ_API_KEY` (fallback determinístico é o generator, não um modo degradado) | `/noticias`, `/treinador`, `/entrevista`, 41 testes novos (331 no total). Ver seção "O que a Fase 10 entrega" abaixo e adenda em docs/adr/0001 |
-| 11 | Polish (UX, animações, acessibilidade, performance) | ⏳ Não iniciada | Contínuo, revisado a cada fase anterior também |
+| 11 | Polish (UX, animações, acessibilidade, performance) | ✅ Implementada e testada — fecha os itens concretos de polish já adiados (carta detalhada/favoritar, N+1 de coleção, log vazando DATABASE_URL); revisão de acessibilidade sem achado; animações N/A pra Discord | `/carta`, `/favoritar`, 16 testes novos (347 no total). Ver seção "O que a Fase 11 entrega" abaixo e adenda em docs/adr/0001 |
 
 ## Bloqueios ativos para avançar além da Fase 1
 
@@ -732,3 +732,63 @@ realmente batido, com o payload correto).
   Groq se tornar um problema real de uso, um cooldown por jogador é a
   mitigação natural, adicionada quando houver tráfego real que a
   justifique (mesmo raciocínio do Risco #7).
+
+## O que a Fase 11 entrega
+
+"Polish" é tratado aqui como fechamento de itens concretos e já
+registrados, não uma auditoria genérica sobre as 10 fases anteriores —
+cada fase já revisa sua própria UX antes de ser marcada ✅, e o
+ROADMAP.md sempre descreveu polish como "contínuo". Ver a justificativa
+completa de escopo na adenda da Fase 11 em docs/adr/0001.
+
+- **`/carta nome:...`** — visão detalhada de uma carta do catálogo:
+  raridade, posição, overall, todos os atributos individuais, habilidade
+  (quando existe), quantas cópias o usuário tem e se alguma está
+  favoritada. `CardRepository` ganhou `findCardByName` (busca
+  case-insensitive por nome) e `listAllCards`.
+- **`/favoritar nome:...`** — fecha o Risco #28 (`setFavorite` já existia
+  e já era testado desde a Fase 7, sem UI). É um toggle por nome de
+  carta: cópias da mesma carta são fungíveis (level sempre 1 hoje), então
+  não existe "qual cópia" pro usuário escolher — favorita a primeira
+  cópia sem favorito, ou desfavorita a que já estiver marcada.
+- **N+1 corrigido em `viewCollection`.** Antes: uma chamada
+  `cardRepository.getCard(cardId)` por carta distinta na coleção. Agora:
+  `listAllCards()` uma vez, indexado em memória — 2 chamadas fixas
+  independente do tamanho da coleção.
+- **Log de erro deixou de vazar `DATABASE_URL`.** Fecha o Risco #9
+  (identificado na revisão de segurança da Fase 2, nunca mitigado até
+  agora). `shared/redact.ts` escova qualquer connection string
+  (`esquema://user:senha@host`) do `error` antes de todo `logger.error` —
+  em `discord/client.ts` (falha de comando) e `src/index.ts`
+  (`unhandledRejection` e o catch de topo de `main()`, este último lendo
+  `process.env` diretamente pra cobrir até uma falha do próprio
+  `loadEnv()`).
+- **Acessibilidade revisada, sem achado.** Todo card Components V2 do
+  projeto já combina cor de destaque com texto/emoji redundante — nunca
+  só a cor carregando o significado.
+- **Animações — não aplicável.** Slash commands com Components V2 não
+  têm superfície de animação client-side; documentado explicitamente
+  como N/A de plataforma, não como lacuna esquecida.
+
+**O que foi validado de verdade:** 16 testes novos (347 no total):
+`viewCardDetail` (rejeita nome inexistente, casa nome case-insensitive,
+zero cópias antes de qualquer pacote, conta duplicatas e reflete cópia
+favoritada), `toggleFavoriteCard` (rejeita carta inexistente, rejeita
+favoritar carta não possuída, favorita no primeiro toggle, desfavorita
+no segundo, nunca afeta a cópia de outro usuário), `redactSecrets`/
+`redactError` (escova connection string, escova segredo literal
+conhecido, não mexe em texto comum, preserva `name`/tipo do erro
+original, passa por um valor não-Error/não-string sem alterá-lo).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Level de carta (`UserCard.level`) continua sempre 1** — nenhuma
+  mecânica de evolução foi adicionada; é uma feature nova, não polish de
+  algo já existente.
+- **Sem auditoria de performance mais ampla.** Só o N+1 encontrado
+  durante o trabalho de carta detalhada foi corrigido; uma varredura
+  completa por N+1 em todo o codebase não foi feita — o catálogo de
+  cartas era o único ponto onde o padrão N+1 crescia com um dado do
+  usuário (tamanho da coleção) em vez de um dado fixo pequeno.
+- **Pesos de IA/economia/sorteio de pacote não foram recalibrados**
+  (Riscos #12/#20/#29) — dependem de dados reais de uso, não de mais um
+  ajuste "no olho".

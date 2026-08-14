@@ -1,6 +1,7 @@
 import { Collection } from "discord.js";
 import { abrirPacoteCommand } from "./commands/abrirPacote.js";
 import { carreiraCommand } from "./commands/carreira.js";
+import { cartaCommand } from "./commands/carta.js";
 import { carteiraCommand } from "./commands/carteira.js";
 import { classificacaoCommand } from "./commands/classificacao.js";
 import { colecaoCommand } from "./commands/colecao.js";
@@ -10,6 +11,7 @@ import { duelodesafiarCommand } from "./commands/duelodesafiar.js";
 import { duelorespondCommand } from "./commands/duelorespond.js";
 import { duelosCommand } from "./commands/duelos.js";
 import { entrevistaCommand } from "./commands/entrevista.js";
+import { favoritarCommand } from "./commands/favoritar.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
 import { noticiasCommand } from "./commands/noticias.js";
 import { pacotesCommand } from "./commands/pacotes.js";
@@ -50,6 +52,8 @@ export function buildCommandRegistry(): Collection<string, Command> {
     pacotesCommand,
     abrirPacoteCommand,
     colecaoCommand,
+    cartaCommand,
+    favoritarCommand,
     duelodesafiarCommand,
     duelorespondCommand,
     duelosCommand,

@@ -61,6 +61,18 @@ export class InMemoryCardRepository implements CardRepository {
     return this.cardsById.get(cardId) ?? null;
   }
 
+  async listAllCards(): Promise<CardRecord[]> {
+    return [...this.cardsById.values()];
+  }
+
+  async findCardByName(name: string): Promise<CardRecord | null> {
+    const target = name.trim().toLowerCase();
+    for (const card of this.cardsById.values()) {
+      if (card.name.toLowerCase() === target) return card;
+    }
+    return null;
+  }
+
   async recordPackOpening(input: RecordPackOpeningInput): Promise<RecordPackOpeningOutput> {
     const existingOpening = this.openingsById.get(input.openingId);
     if (existingOpening) return existingOpening;

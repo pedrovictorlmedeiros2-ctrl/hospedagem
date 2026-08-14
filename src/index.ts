@@ -23,6 +23,17 @@ import { publishRecordNews } from "./narrative/services/publishRecordNews.js";
 import { PrismaPlayerRepository } from "./player/adapters/prismaPlayerRepository.js";
 import { EventBus } from "./shared/eventBus.js";
 import { createLogger } from "./shared/logger.js";
+import { redactError } from "./shared/redact.js";
+
+// Read directly from process.env (not the parsed/validated `env`) so a
+// leak can be scrubbed even if the failure happened before/while loading
+// env — e.g. loadEnv() itself throwing, or a startup crash outside main().
+// See RISK_REGISTER.md risco #9.
+function knownSecrets(): string[] {
+  return [process.env["DATABASE_URL"], process.env["DISCORD_BOT_TOKEN"], process.env["GROQ_API_KEY"]].filter(
+    (value): value is string => Boolean(value),
+  );
+}
 
 async function main() {
   const env = loadEnv();
@@ -106,13 +117,13 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   process.on("unhandledRejection", (error) => {
-    logger.error({ error }, "unhandled rejection");
+    logger.error({ error: redactError(error, knownSecrets()) }, "unhandled rejection");
   });
 
   await client.login(env.DISCORD_BOT_TOKEN);
 }
 
 main().catch((error: unknown) => {
-  console.error("Fatal error during startup:", error);
+  console.error("Fatal error during startup:", redactError(error, knownSecrets()));
   process.exitCode = 1;
 });
