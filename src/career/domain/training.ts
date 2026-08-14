@@ -97,6 +97,17 @@ export const TRAINING_STAMINA_COST = 10;
 export const MIN_STAMINA_TO_TRAIN = 15;
 export const TRAINING_COOLDOWN_HOURS = 20;
 
+/**
+ * Paid upgrade to a normal training session: doubles the attribute gain,
+ * shares the same daily cooldown and stamina cost as a free session (it
+ * does not let you train more often or cheaper on stamina) — the only
+ * thing coins buy is a better outcome from the one session you already
+ * get, which keeps it from being a way to bypass the pacing the cooldown
+ * is there to enforce.
+ */
+export const INTENSIVE_TRAINING_COST_COINS = 100;
+export const INTENSIVE_TRAINING_MULTIPLIER = 2;
+
 /** Cooldown is hours-based (not a calendar-date string match) so it's trivially testable with fixed Date objects, while still landing on "about once per real day". */
 export function canTrainNow(lastTrainingAt: Date | null, now: Date): boolean {
   if (!lastTrainingAt) return true;

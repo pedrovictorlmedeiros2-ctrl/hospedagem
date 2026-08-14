@@ -4,13 +4,15 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 5 — Competitions** implementada e testada — a liga
-tem calendário real (turno e returno contra 6 clubes rivais) e
-classificação de verdade, além das Fases 2, 3 e 4 completas. A integração
-real com Discord e Postgres ainda não foi validada neste ambiente (sem
-credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa
-em cada fase, e `docs/adr/0001-stack-and-architecture.md` para as
-decisões de arquitetura.
+Estado atual: **Fase 6 — Economy** parcialmente implementada e testada —
+coins, recompensa de partida e um sumidouro (treino intensivo pago) estão
+prontos com ledger auditável e à prova de duplicação/corrida; mercado,
+transferências e contratos ainda não foram iniciados (ver
+`docs/ROADMAP.md`). Fases 2 a 5 completas. A integração real com Discord
+e Postgres ainda não foi validada neste ambiente (sem credenciais) — ver
+`docs/ROADMAP.md` para o que "implementado" significa em cada fase, e
+`docs/adr/0001-stack-and-architecture.md` para as decisões de
+arquitetura.
 
 ## Comandos do jogo
 
@@ -22,9 +24,10 @@ decisões de arquitetura.
 | `/personalizar visual` | Edita cores, tema, estilo de carta, moldura e fundo (cosmético, sem efeito no gameplay) |
 | `/simular-amistoso` | Simula uma partida de teste do motor contra um adversário sintético (não persiste no banco) |
 | `/carreira` | Mostra clube, estágio de carreira, estatísticas da temporada e status de lesão |
-| `/treinar` | Treina um atributo (uma sessão por dia, retorno decrescente perto do limite) |
-| `/jogar-carreira` | Joga a próxima rodada agendada da liga — persiste no banco, atualiza classificação/estatísticas e pode promover/lesionar o jogador |
+| `/treinar` | Treina um atributo (uma sessão por dia, retorno decrescente perto do limite); opção "intensivo" dobra o ganho por coins, mesmo cooldown |
+| `/jogar-carreira` | Joga a próxima rodada agendada da liga — persiste no banco, atualiza classificação/estatísticas, paga recompensa em coins e pode promover/lesionar o jogador |
 | `/classificacao` | Mostra a tabela da liga (pontos, saldo de gols, posição do seu clube) |
+| `/carteira` | Mostra seu saldo de coins e o histórico recente de movimentações |
 
 ## Stack
 

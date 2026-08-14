@@ -3,6 +3,7 @@ import { InMemoryCareerRepository } from "../../../../src/career/adapters/inMemo
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
 import { viewCareer } from "../../../../src/career/services/viewCareer.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
+import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
@@ -21,6 +22,7 @@ function makeDeps() {
     careerRepository: new InMemoryCareerRepository(),
     competitionRepository: new InMemoryCompetitionRepository(),
     matchRepository: new InMemoryMatchRepository(),
+    walletRepository: new InMemoryWalletRepository(),
     events: new EventBus(fakeLogger()),
   };
 }

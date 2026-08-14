@@ -1,3 +1,4 @@
+import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import { ProfileNotFoundError } from "../../player/domain/errors.js";
 import type { PlayerRecord, PlayerRepository } from "../../player/ports/playerRepository.js";
@@ -11,6 +12,8 @@ import {
   attributeFieldFor,
   calculateTrainingGain,
   canTrainNow,
+  INTENSIVE_TRAINING_COST_COINS,
+  INTENSIVE_TRAINING_MULTIPLIER,
   MIN_STAMINA_TO_TRAIN,
   TRAINING_COOLDOWN_HOURS,
   TRAINING_STAMINA_COST,
@@ -23,11 +26,14 @@ export interface TrainPlayerDeps {
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
   trainingRepository: TrainingRepository;
+  walletRepository: WalletRepository;
 }
 
 export interface TrainPlayerInput {
   discordId: string;
   focus: TrainingFocus;
+  /** Paid upgrade — doubles the gain for this same session, costs INTENSIVE_TRAINING_COST_COINS. Throws InsufficientFundsError if the wallet can't cover it. */
+  intensive?: boolean;
   now?: Date;
 }
 
@@ -35,6 +41,8 @@ export interface TrainPlayerOutput {
   player: PlayerRecord;
   focus: TrainingFocus;
   gainedPoints: number;
+  intensive: boolean;
+  coinsSpent: number;
 }
 
 function currentAttributes(player: PlayerRecord): CoreAttributes & GoalkeeperAttributes {
@@ -80,10 +88,28 @@ export async function trainPlayer(
     throw new InsufficientStaminaError();
   }
 
+  const intensive = input.intensive ?? false;
+  if (intensive) {
+    // Bucketed by UTC calendar day rather than a fresh key per call: two
+    // concurrent/retried requests for the same intensive session on the
+    // same day resolve to the same idempotencyKey, so the wallet charges
+    // exactly once (see WalletRepository.applyTransaction) even though the
+    // cooldown check above hasn't recorded this session yet.
+    const dayBucket = now.toISOString().slice(0, 10);
+    await deps.walletRepository.applyTransaction({
+      userId: user.id,
+      currency: "COINS",
+      type: "SINK",
+      amount: BigInt(INTENSIVE_TRAINING_COST_COINS),
+      reason: "INTENSIVE_TRAINING",
+      idempotencyKey: `training-intensive:${player.id}:${dayBucket}`,
+    });
+  }
+
   const field = attributeFieldFor(input.focus);
   const attributes = currentAttributes(player);
   const currentValue = attributes[field] ?? 0;
-  const gain = calculateTrainingGain(currentValue);
+  const gain = calculateTrainingGain(currentValue) * (intensive ? INTENSIVE_TRAINING_MULTIPLIER : 1);
   const newValue = Math.min(99, currentValue + gain);
 
   const updatedAttributes = { ...attributes, [field]: newValue };
@@ -104,5 +130,11 @@ export async function trainPlayer(
     performedAt: now,
   });
 
-  return { player: updatedPlayer, focus: input.focus, gainedPoints: gain };
+  return {
+    player: updatedPlayer,
+    focus: input.focus,
+    gainedPoints: gain,
+    intensive,
+    coinsSpent: intensive ? INTENSIVE_TRAINING_COST_COINS : 0,
+  };
 }

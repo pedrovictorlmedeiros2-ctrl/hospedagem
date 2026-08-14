@@ -12,7 +12,7 @@ briefing original do produto.
 | 3 | Game Engine (núcleo da partida, IA) | 🟡 Núcleo implementado e testado; sem persistência nem UI ao vivo ainda | Motor puro/determinístico + `/simular-amistoso`, 34 testes novos. Ver seção "O que a Fase 3 entrega" abaixo e adenda em docs/adr/0001 |
 | 4 | Career (treino, escalação, calendário) | 🟡 Implementado e testado; primeira partida com persistência real | `/carreira`, `/treinar`, `/jogar-carreira`, 19 testes novos (137 no total). Ver seção "O que a Fase 4 entrega" abaixo |
 | 5 | Competitions (ligas, copas, temporadas, seleção) | 🟡 Liga real implementada e testada; mata-mata só no domínio; seleção adiada | `/classificacao`, calendário turno/returno real, 26 testes novos (169 no total). Ver seção "O que a Fase 5 entrega" abaixo |
-| 6 | Economy (coins, mercado, transferências, contratos) | ⏳ Não iniciada | Schema do ledger já modelado (WalletTransaction) |
+| 6 | Economy (coins, mercado, transferências, contratos) | 🟡 Coins + recompensas + 1 sink implementados e testados; mercado/transferências/contratos NÃO iniciados | `/carteira`, recompensa de partida integrada ao `/jogar-carreira`, treino intensivo pago, 19 testes novos (188 no total). Ver seção "O que a Fase 6 entrega" abaixo |
 | 7 | Cards (cartas, packs, inventário) | ⏳ Não iniciada | Schema já modelado (Card/CardPack/PackOdds/UserCard) |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ⏳ Não iniciada | Schema já modelado (Duel) |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ⏳ Não iniciada | Schema já modelado (RankingSnapshot/Record/Rivalry) |
@@ -225,3 +225,97 @@ realista).
   aparecer depois da liga gerada, ele entra no mesmo clube/liga
   normalmente (era esse o design). O que não existe é uma liga que
   aceita novos CLUBES no meio da temporada — decisão consciente, ver ADR.
+
+## O que a Fase 6 entrega
+
+`src/economy/` segue o mesmo padrão hexagonal das demais fases:
+domínio puro (`domain/matchReward.ts`, `domain/errors.ts`) → porta
+(`ports/walletRepository.ts`) → adapters Prisma real + in-memory
+(`adapters/`) → serviços (`services/grantMatchReward.ts`,
+`services/viewWallet.ts`). `Wallet`/`WalletTransaction` já existiam no
+schema desde a Fase 1 como ledger append-only; esta fase é a primeira a
+escrever de verdade neles.
+
+**Escopo desta fase, e por quê é menor que "Fase 6" no plano original.**
+O plano original define a Fase 6 como "Coins; recompensas; mercado;
+transferências; contratos". Implementei a parte que é pré-requisito de
+segurança para qualquer economia (o ledger + as regras de
+duplicação/corrida) mais UMA fonte (recompensa de partida) e UM sumidouro
+(treino intensivo pago) — e deliberadamente NÃO tentei mercado/
+transferências/contratos na mesma passada. Motivo: um sistema de mercado
+de verdade precisa de avaliação de valor de mercado, um state machine de
+proposta/contraproposta/expiração, e IA de clubes decidindo o que aceitar
+— construir isso rápido, na mesma fase que a fundação do ledger, é
+exatamente o tipo de decisão que a regra fundamental deste projeto pede
+para eu recusar: arriscaria entregar uma economia mal testada e
+potencialmente explorável só para "bater o requisito" da fase. Prefiro
+entregar o ledger sólido e auditável agora, e mercado/transferências/
+contratos como continuação depois — ver Risco #4 atualizado abaixo.
+
+**Como o dinheiro entra (source) e sai (sink) hoje:**
+- **Recompensa de partida** (`economy/domain/matchReward.ts`): calculada
+  a partir de titular/banco, resultado (vitória/empate/derrota), gols,
+  assistências e nota. Banco sempre recebe um valor fixo pequeno,
+  independente do resultado (nunca zero, nunca dependente de uma partida
+  que o jogador não disputou); titular ganha um piso maior mais bônus por
+  gol/assistência/nota alta ("man of the match"). Pesos calibrados no
+  olho para um v1, mesmo risco aceito dos pesos de IA do motor (ver
+  Risco #12).
+- **Treino intensivo** (`career/domain/training.ts` +
+  `career/services/trainPlayer.ts`): opção paga em `/treinar` que dobra o
+  ganho da MESMA sessão, sem tocar no cooldown de 20h nem no custo de
+  estamina — coins compram um resultado melhor da sessão que você já
+  teria, nunca uma sessão extra, o que fecha a via óbvia de exploração
+  (comprar treino ilimitado).
+
+**Como a integridade é garantida:**
+`WalletRepository.applyTransaction` é o ÚNICO ponto que pode tocar
+`Wallet.coins`/`Wallet.tokens`, e sempre em conjunto com uma linha
+`WalletTransaction` — nunca um sem o outro. Toda chamada carrega um
+`idempotencyKey` (`@unique` no schema): uma chamada repetida com a mesma
+chave (retry de rede, corrida entre duas requisições concorrentes) nunca
+aplica duas vezes, ela lê a transação já gravada e devolve o mesmo saldo.
+No adapter Prisma isso é: `$transaction` que faz `increment`/`decrement`
+atômico e só então tenta criar a `WalletTransaction`; se a chave já
+existe, a criação falha com `P2002`, o que desfaz TODA a transação
+(inclusive o increment) automaticamente — o padrão já usado em
+`PrismaUserRepository`/`PrismaCareerRepository`. No adapter in-memory
+(usado nos testes), o mesmo efeito vem de nunca haver um `await` entre a
+checagem de idempotência e a escrita, o que no runtime single-threaded do
+Node é suficiente para ser atômico entre chamadas concorrentes — testado
+explicitamente com `Promise.all` de duas chamadas idênticas concorrentes.
+Um SINK que deixaria o saldo negativo é rejeitado (`InsufficientFundsError`)
+sem tocar o saldo.
+
+Um efeito colateral bom: como a recompensa de partida usa
+`match-reward:${matchId}` como chave, mesmo a corrida já documentada e
+aceita entre duas chamadas concorrentes de `/jogar-carreira` (Risco #17
+adaptado, ver `getNextFixtureForTeam`) não pode pagar a recompensa duas
+vezes para a mesma partida — a idempotência do wallet cobre esse caso de
+graça.
+
+**O que foi validado de verdade:** 19 testes novos (188 no total):
+cálculo puro de recompensa (banco vs titular, vitória > empate > derrota,
+bônus de gol/assistência/nota), o `InMemoryWalletRepository` (crédito,
+débito, saldo insuficiente não muda o saldo, idempotência em chamada
+repetida E em chamada concorrente via `Promise.all`, histórico
+paginado/mais recente primeiro, carteiras isoladas por usuário),
+`grantMatchReward` (valor bate com o cálculo puro, nunca paga duas vezes
+pelo mesmo `matchId`), `viewWallet`, e um teste de integração em
+`playCareerMatch` confirmando que o saldo na carteira bate exatamente com
+`coinsEarned` retornado. `/treinar` ganhou testes para a sessão intensiva
+(cobra o valor certo, dobra o ganho, rejeita com `InsufficientFundsError`
+quando o saldo não cobre).
+
+**O que NÃO foi implementado ainda (ver Risco #4 atualizado):**
+- **Mercado (comprar/vender jogadores sintéticos ou vagas).** Nenhum
+  código.
+- **Transferências entre clubes/jogadores.** `Transfer` está modelado no
+  schema, sem lógica de aplicação.
+- **Contratos e salários.** `Contract` está modelado no schema, sem
+  lógica de aplicação.
+- **Tokens** (segunda moeda modelada em `Wallet.tokens`) não tem nenhuma
+  fonte ou sumidouro ainda — só existe porque o schema já a previa.
+- **Limites/tetos de saldo** não foram implementados — não há hoje
+  nenhum mecanismo que faria o saldo crescer rápido o bastante para isso
+  importar, mas é algo a revisar quando mercado/apostas existirem.

@@ -1,5 +1,7 @@
 import type { CareerStage } from "@prisma/client";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
+import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
+import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
@@ -32,6 +34,7 @@ export interface PlayCareerMatchDeps {
   careerRepository: CareerRepository;
   competitionRepository: CompetitionRepository;
   matchRepository: MatchRepository;
+  walletRepository: WalletRepository;
   events: EventBus;
 }
 
@@ -52,6 +55,7 @@ export interface PlayCareerMatchOutput {
   previousStage: CareerStage;
   newStage: CareerStage;
   injuryOccurred: boolean;
+  coinsEarned: number;
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
@@ -126,6 +130,27 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
 
   await deps.competitionRepository.recordFixtureResult(tournamentId, fixture.matchId, result.homeScore, result.awayScore);
 
+  let coinsEarned = 0;
+  if (realStat) {
+    const playerScore = playerSide === "home" ? result.homeScore : result.awayScore;
+    const opponentScore = playerSide === "home" ? result.awayScore : result.homeScore;
+    const outcome = playerScore > opponentScore ? "WIN" : playerScore === opponentScore ? "DRAW" : "LOSS";
+
+    const reward = await grantMatchReward(
+      { walletRepository: deps.walletRepository },
+      {
+        userId: player.userId,
+        matchId: fixture.matchId,
+        outcome,
+        lineupStatus,
+        goals: realStat.goals,
+        assists: realStat.assists,
+        rating: realStat.rating,
+      },
+    );
+    coinsEarned = reward.amount;
+  }
+
   const injuredInMatch = result.events.some((event) => event.type === "INJURY" && event.playerId === matchPlayerInputId);
   if (injuredInMatch) {
     const rolled = rollInjury(createRng(`${seed}:injury`), now);
@@ -154,5 +179,6 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     previousStage: career.stage,
     newStage: proposedStage,
     injuryOccurred: injuredInMatch,
+    coinsEarned,
   };
 }

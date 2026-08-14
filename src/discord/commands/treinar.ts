@@ -5,7 +5,7 @@ import {
   SlashCommandBuilder,
   TextDisplayBuilder,
 } from "discord.js";
-import { TRAINING_FOCUS_LABELS, type TrainingFocus } from "../../career/domain/training.js";
+import { INTENSIVE_TRAINING_COST_COINS, TRAINING_FOCUS_LABELS, type TrainingFocus } from "../../career/domain/training.js";
 import { trainPlayer } from "../../career/services/trainPlayer.js";
 import type { Command } from "./types.js";
 
@@ -24,34 +24,43 @@ export const treinarCommand: Command = {
         .setDescription("Atributo a treinar")
         .setRequired(true)
         .addChoices(...focusChoices),
+    )
+    .addBooleanOption((opt) =>
+      opt
+        .setName("intensivo")
+        .setDescription(`Treino intensivo: dobra o ganho por ${INTENSIVE_TRAINING_COST_COINS} coins (mesmo cooldown)`)
+        .setRequired(false),
     ),
 
   async execute(interaction, ctx) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const focus = interaction.options.getString("foco", true) as TrainingFocus;
+    const intensive = interaction.options.getBoolean("intensivo") ?? false;
 
-    const { player, gainedPoints } = await trainPlayer(
+    const { player, gainedPoints, coinsSpent } = await trainPlayer(
       {
         userRepository: ctx.userRepository,
         playerRepository: ctx.playerRepository,
         trainingRepository: ctx.trainingRepository,
+        walletRepository: ctx.walletRepository,
       },
-      { discordId: interaction.user.id, focus },
+      { discordId: interaction.user.id, focus, intensive },
     );
+
+    const lines = [
+      `Foco: **${TRAINING_FOCUS_LABELS[focus]}** (+${gainedPoints})`,
+      `**OVR ${player.overall}** • Estamina ${player.stamina}/100`,
+    ];
+    if (coinsSpent > 0) {
+      lines.push(`🪙 Treino intensivo: -${coinsSpent} coins`);
+    }
 
     const card = new ContainerBuilder()
       .setAccentColor(0x2ecc71)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🏋️ Treino concluído"))
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          [
-            `Foco: **${TRAINING_FOCUS_LABELS[focus]}** (+${gainedPoints})`,
-            `**OVR ${player.overall}** • Estamina ${player.stamina}/100`,
-          ].join("\n"),
-        ),
-      );
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
 
     await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
   },

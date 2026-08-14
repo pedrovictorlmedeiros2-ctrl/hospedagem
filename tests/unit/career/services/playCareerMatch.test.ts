@@ -5,6 +5,7 @@ import { SeasonCompleteError } from "../../../../src/career/domain/errors.js";
 import { nextCareerStage } from "../../../../src/career/domain/progression.js";
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
+import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
@@ -23,6 +24,7 @@ function makeDeps() {
     careerRepository: new InMemoryCareerRepository(),
     competitionRepository: new InMemoryCompetitionRepository(),
     matchRepository: new InMemoryMatchRepository(),
+    walletRepository: new InMemoryWalletRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -53,6 +55,18 @@ describe("playCareerMatch", () => {
     expect(match.result.events[0]?.type).toBe("KICKOFF");
     expect(deps.matchRepository.recorded).toHaveLength(1);
     expect(match.lineupStatus).toBe("STARTING");
+  });
+
+  it("grants a coin reward that lands in the wallet, matching the reported coinsEarned", async () => {
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+    const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
+
+    const match = await playCareerMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(match.coinsEarned).toBeGreaterThan(0);
+    const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
+    expect(wallet.coins).toBe(BigInt(match.coinsEarned));
   });
 
   it("emits MATCH_STARTED and MATCH_FINISHED", async () => {

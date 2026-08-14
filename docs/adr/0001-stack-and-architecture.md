@@ -209,6 +209,61 @@ Decisões de escopo:
   gerado (turno e returno alternam mandante/visitante), e
   `playCareerMatch` monta os dois elencos de acordo.
 
+## Adenda (Fase 6) — Economy: ledger + 1 fonte + 1 sumidouro, mercado adiado
+
+`src/economy/` entra como um novo contexto hexagonal, consumido pelos
+contextos `career`/`discord` como uma porta comum (`WalletRepository`),
+no mesmo padrão de composição multi-contexto que `playCareerMatch` já
+usava para `game`/`competitions`/`career`. `Wallet`/`WalletTransaction`
+já existiam no schema desde a Fase 1 como ledger append-only — esta fase
+é a primeira a escrever de verdade neles.
+
+Decisões de escopo:
+
+- **Coins + recompensas + 1 sumidouro agora; mercado/transferências/
+  contratos ficam para depois.** O plano original definia a Fase 6 como
+  "Coins; recompensas; mercado; transferências; contratos" — um escopo
+  que inclui, dentro da mesma fase, tanto a fundação do ledger quanto um
+  sistema de negociação completo (avaliação de valor de mercado,
+  proposta/contraproposta, expiração de janela, IA de clube decidindo o
+  que aceitar). Implementar as duas coisas na mesma passada arriscaria
+  exatamente o que a regra fundamental deste projeto pede para eu
+  recusar: entregar uma economia mal testada e potencialmente explorável
+  só para "bater o requisito" da fase. Entreguei o ledger sólido,
+  auditável e testado contra duplicação/corrida — que É o pré-requisito
+  de segurança para qualquer economia — mais uma fonte (recompensa de
+  partida) e um sumidouro (treino intensivo pago) reais e integrados, e
+  registrei mercado/transferências/contratos como não iniciados (ver
+  ROADMAP.md, Risco #4 atualizado em RISK_REGISTER.md).
+- **`WalletRepository.applyTransaction` é o único ponto de escrita em
+  `Wallet.coins`/`Wallet.tokens`.** Nunca uma mutação direta — sempre
+  atrelada a criar a `WalletTransaction` correspondente na mesma operação
+  atômica, para que saldo e ledger nunca divirjam.
+- **Idempotência via `idempotencyKey` único é o único mecanismo
+  antiduplicação, e é suficiente.** No adapter Prisma: `$transaction` com
+  `increment`/`decrement` atômico seguido da tentativa de criar a
+  `WalletTransaction`; uma chave repetida colide no `@unique` (`P2002`),
+  o que desfaz a transação inteira automaticamente (mesmo padrão de
+  `PrismaUserRepository.ensureUserForDiscordId`), e o adapter trata isso
+  como "já aplicado" em vez de erro. No adapter in-memory: nenhum `await`
+  entre a checagem de idempotência e a escrita, o que no runtime
+  single-threaded do Node basta para atomicidade entre chamadas
+  concorrentes — verificado com um teste explícito de `Promise.all`. A
+  chave da recompensa de partida (`match-reward:<matchId>`) tem um efeito
+  colateral bom: protege a recompensa até contra a corrida já documentada
+  em `getNextFixtureForTeam` (ver Risco #17), sem precisar de nenhum
+  código extra.
+- **Sumidouro escolhido a dedo para não abrir uma via de exploração
+  óbvia.** Treino intensivo (dobra o ganho de UMA sessão de `/treinar`)
+  foi escolhido porque compartilha o cooldown de 20h e o custo de
+  estamina da sessão normal — coins nunca compram uma sessão EXTRA, só um
+  resultado melhor da sessão que o jogador já teria direito. Um sumidouro
+  que removesse o cooldown teria sido a "ideia ruim" que a regra
+  fundamental pede para eu recusar em vez de implementar calado.
+- **Pesos de recompensa são heurística de v1, não calibração real** —
+  mesma categoria de risco aceito que os pesos de IA do motor de partida
+  (Risco #12).
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que
