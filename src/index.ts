@@ -1,5 +1,6 @@
 import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";
 import { PrismaTrainingRepository } from "./career/adapters/prismaTrainingRepository.js";
+import { PrismaCardRepository } from "./cards/adapters/prismaCardRepository.js";
 import { PrismaCompetitionRepository } from "./competitions/adapters/prismaCompetitionRepository.js";
 import { loadEnv } from "./config/env.js";
 import { getPrismaClient, disconnectPrisma } from "./database/prisma.js";
@@ -25,6 +26,7 @@ async function main() {
   const matchRepository = new PrismaMatchRepository(prisma);
   const walletRepository = new PrismaWalletRepository(prisma);
   const marketRepository = new PrismaMarketRepository(prisma);
+  const cardRepository = new PrismaCardRepository(prisma);
 
   const client = createDiscordClient({
     prisma,
@@ -38,6 +40,7 @@ async function main() {
     matchRepository,
     walletRepository,
     marketRepository,
+    cardRepository,
   });
 
   let shuttingDown = false;

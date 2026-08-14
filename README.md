@@ -4,14 +4,13 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 6 — Economy** implementada e testada dentro do
-escopo redefinido: coins, recompensa de partida, treino intensivo pago,
-contratos com salário por partida e transferências entre clubes da liga
-— tudo com ledger auditável e à prova de duplicação/corrida. Fases 2 a 5
-completas. A integração real com Discord e Postgres ainda não foi
-validada neste ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o
-que "implementado" significa em cada fase (inclusive o que ficou de fora
-do mercado/transferências por decisão consciente), e
+Estado atual: **Fase 7 — Cards** implementada e testada — pacotes de
+cartas colecionáveis com catálogo fixo, sorteio ponderado por raridade e
+abertura à prova de duplicação/corrida mesmo em retry de rede. Fases 2 a
+6 completas (carreira, competições, economia com salário/transferências).
+A integração real com Discord e Postgres ainda não foi validada neste
+ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
+"implementado" significa em cada fase, e
 `docs/adr/0001-stack-and-architecture.md` para as decisões de
 arquitetura.
 
@@ -32,6 +31,9 @@ arquitetura.
 | `/contrato` | Mostra seu contrato atual: salário por partida, cláusula de rescisão e validade |
 | `/propostas` | Lista propostas de transferência de outros clubes da sua liga |
 | `/transferir` | Aceita uma proposta de transferência e assina com o novo clube |
+| `/pacotes` | Mostra os pacotes de cartas disponíveis para comprar |
+| `/abrir-pacote` | Compra e abre um pacote — sorteia cartas por raridade e as adiciona à coleção |
+| `/colecao` | Mostra sua coleção de cartas, agrupada com contagem |
 
 ## Stack
 

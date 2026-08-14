@@ -328,6 +328,59 @@ Decisões de escopo e arquitetura:
   sentido para uma arquitetura com elencos multi-jogador-real, que este
   produto não tem.
 
+## Adenda (Fase 7) — Cards: catálogo fixo sem migração, idempotência por interaction.id
+
+`src/cards/` entra como um novo contexto hexagonal, consumindo
+`WalletRepository` (economy) do mesmo jeito que `career` já consome
+`economy`/`competitions`/`game` — composição multi-contexto na camada de
+serviço, não acoplamento de domínio.
+
+Decisões de arquitetura:
+
+- **Catálogo fixo (cartas + pacotes + odds) é get-or-criado por id
+  explícito, sem nenhuma coluna nova no schema.** `Card.id`/`CardPack.id`
+  já aceitam um valor explícito no `create` do Prisma em vez do
+  `cuid()` default — então um pool fixo e legível de ids
+  (`"card-legendary-01"`, `"pack-ouro"`) definido como constantes
+  TypeScript (`cards/domain/catalog.ts`) basta para o mesmo padrão de
+  "mundo compartilhado, get-or-create idempotente" já usado nos clubes
+  rivais (Fase 4/5), sem precisar de uma migração nova nem de um script
+  de seed separado.
+- **A idempotência do sorteio de pacote precisou de mais cuidado que a
+  do resto da economia.** Nas fontes/sumidouros anteriores (Fase 6), a
+  idempotencyKey vinha de algo já estável por natureza — um `matchId`
+  real, ou um bucket de dia de calendário. Abrir um pacote não tem
+  equivalente óbvio: é uma ação sob demanda, não presa a uma partida nem
+  a "uma vez por dia". A primeira versão gerava um nonce aleatório
+  dentro do próprio serviço — o que protege contra chamada repetida
+  DENTRO da mesma invocação, mas um retry genuíno da interação do
+  Discord (webhook reentregue, timeout de rede) geraria um nonce novo a
+  cada tentativa, então o pagamento seria idempotente mas o sorteio de
+  cartas NÃO seria — um retry legítimo do jogador poderia ganhar cartas
+  de graça. Corrigido antes de escrever qualquer teste: a idempotencyKey
+  vem de `interaction.id` (passado explicitamente pela camada Discord
+  como `requestId`, nunca gerado dentro do serviço), e essa mesma chave
+  seedeia o RNG do sorteio e vira o id explícito do `PackOpening`
+  (mesmo truque de id explícito usado no catálogo) — um retry genuíno
+  reproduz o mesmo sorteio E colide no id primário do `PackOpening`,
+  então `CardRepository.recordPackOpening` devolve as cartas já
+  sorteadas em vez de criar um segundo lote (mesmo padrão de captura de
+  `P2002` já usado em `PrismaWalletRepository`/`PrismaUserRepository`).
+- **Ordem das operações em `openPack`: debitar a carteira PRIMEIRO,
+  sortear/persistir cartas DEPOIS.** Minimiza o pior caso de uma queda
+  no meio do caminho — "pago mas sem cartas ainda" é recuperável com um
+  retry (mesmo `requestId` reproduz o mesmo sorteio), enquanto a ordem
+  inversa arriscaria conceder cartas sem cobrar. Mesma categoria de
+  risco/mitigação já aceita para Match/Injury e FixtureResult/
+  MatchResult.
+- **Cartas não afetam gameplay nesta fase.** É uma camada de
+  colecionismo isolada — nenhuma carta altera squads, partidas ou
+  atributos do jogador real ainda. Conectar cartas ao motor de partida é
+  um gancho natural para uma fase futura, mas fazer isso agora
+  misturaria a validação do loop de colecionismo com a do motor de
+  partida antes de qualquer um dos dois estar provado sozinho — mesma
+  disciplina de separação de escopo já usada em toda fase anterior.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

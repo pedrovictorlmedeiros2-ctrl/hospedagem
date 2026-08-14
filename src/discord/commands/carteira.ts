@@ -12,6 +12,9 @@ import type { Command } from "./types.js";
 const REASON_LABELS: Record<string, string> = {
   MATCH_REWARD: "Recompensa de partida",
   INTENSIVE_TRAINING: "Treino intensivo",
+  SALARY: "Salário",
+  TRANSFER_SIGNING_BONUS: "Bônus de assinatura (transferência)",
+  PACK_PURCHASE: "Compra de pacote",
 };
 
 function formatTransactionLine(tx: WalletTransactionRecord): string {

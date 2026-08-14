@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { ChatInputCommandInteraction } from "discord.js";
 import type { CareerRepository } from "../../career/ports/careerRepository.js";
 import type { TrainingRepository } from "../../career/ports/trainingRepository.js";
+import type { CardRepository } from "../../cards/ports/cardRepository.js";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
 import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
@@ -23,6 +24,7 @@ export interface CommandContext {
   matchRepository: MatchRepository;
   walletRepository: WalletRepository;
   marketRepository: MarketRepository;
+  cardRepository: CardRepository;
 }
 
 /**

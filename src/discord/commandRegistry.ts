@@ -1,10 +1,13 @@
 import { Collection } from "discord.js";
+import { abrirPacoteCommand } from "./commands/abrirPacote.js";
 import { carreiraCommand } from "./commands/carreira.js";
 import { carteiraCommand } from "./commands/carteira.js";
 import { classificacaoCommand } from "./commands/classificacao.js";
+import { colecaoCommand } from "./commands/colecao.js";
 import { contratoCommand } from "./commands/contrato.js";
 import { criarPerfilCommand } from "./commands/criarPerfil.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
+import { pacotesCommand } from "./commands/pacotes.js";
 import { personalizarCommand } from "./commands/personalizar.js";
 import { pingCommand } from "./commands/ping.js";
 import { propostasCommand } from "./commands/propostas.js";
@@ -35,6 +38,9 @@ export function buildCommandRegistry(): Collection<string, Command> {
     contratoCommand,
     propostasCommand,
     transferirCommand,
+    pacotesCommand,
+    abrirPacoteCommand,
+    colecaoCommand,
   ]) {
     commands.set(command.data.name, command);
   }

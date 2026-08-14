@@ -13,7 +13,7 @@ briefing original do produto.
 | 4 | Career (treino, escalação, calendário) | 🟡 Implementado e testado; primeira partida com persistência real | `/carreira`, `/treinar`, `/jogar-carreira`, 19 testes novos (137 no total). Ver seção "O que a Fase 4 entrega" abaixo |
 | 5 | Competitions (ligas, copas, temporadas, seleção) | 🟡 Liga real implementada e testada; mata-mata só no domínio; seleção adiada | `/classificacao`, calendário turno/returno real, 26 testes novos (169 no total). Ver seção "O que a Fase 5 entrega" abaixo |
 | 6 | Economy (coins, mercado, transferências, contratos) | ✅ Implementada e testada — coins, recompensas, treino intensivo, contratos com salário e transferências entre clubes da liga | `/carteira`, `/contrato`, `/propostas`, `/transferir`, 52 testes novos (221 no total). Ver seção "O que a Fase 6 entrega" abaixo |
-| 7 | Cards (cartas, packs, inventário) | ⏳ Não iniciada | Schema já modelado (Card/CardPack/PackOdds/UserCard) |
+| 7 | Cards (cartas, packs, inventário) | ✅ Implementada e testada — catálogo fixo, sorteio ponderado, abertura à prova de duplicação | `/pacotes`, `/abrir-pacote`, `/colecao`, 20 testes novos (241 no total). Ver seção "O que a Fase 7 entrega" abaixo |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ⏳ Não iniciada | Schema já modelado (Duel) |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ⏳ Não iniciada | Schema já modelado (RankingSnapshot/Record/Rivalry) |
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ⏳ Não iniciada | Depende de `GROQ_API_KEY` |
@@ -367,3 +367,99 @@ continua com exatamente 7 clubes distintos, não duplicados).
   porque o schema já a previa.
 - **Limites/tetos de saldo** não implementados — nada hoje faria o saldo
   crescer rápido o bastante para isso importar.
+
+## O que a Fase 7 entrega
+
+`src/cards/` segue o mesmo padrão hexagonal: domínio puro
+(`domain/catalog.ts`, `domain/packOpening.ts`, `domain/labels.ts`) →
+porta (`ports/cardRepository.ts`) → adapters Prisma real + in-memory
+(`adapters/`) → serviços (`services/ensureCatalog.ts`,
+`services/listPacks.ts`, `services/openPack.ts`,
+`services/viewCollection.ts`). `Card`/`CardPack`/`PackOdds`/`UserCard`/
+`PackOpening` já existiam no schema desde a Fase 1; esta fase é a
+primeira a escrever de verdade neles.
+
+**Catálogo fixo, sem migração de schema.** 15 cartas fictícias (nomes
+inventados, mesma disciplina de `career/domain/clubNaming.ts` para
+clubes) e 3 pacotes (Bronze/Prata/Ouro, cada um com odds por raridade
+diferentes — Ouro inclui a única carta SPECIAL, fixada via
+`pinnedCardId`) vivem como constantes TypeScript em
+`cards/domain/catalog.ts`, get-or-criadas idempotentemente por um id
+fixo e legível (`"card-legendary-01"`, `"pack-ouro"`) em vez de um
+`cuid()` gerado. Isso reaproveita exatamente o mesmo truque já usado
+para o pool fixo de clubes rivais (Fase 4/5) — e, ao contrário do que
+achei inicialmente necessário, **não precisou de nenhuma coluna nova no
+schema**: `Card.id`/`CardPack.id` já aceitam um valor explícito no
+`create`, só o `@default(cuid())` deixa de entrar em ação.
+
+**Sorteio de pacote é puro e determinístico** (`cards/domain/
+packOpening.ts`, `drawPackCards`): rola raridade por peso (reaproveita
+`weightedPick`, já usado no motor de partida — não reinventado), depois
+resolve pra uma carta específica (a pinada, ou uma aleatória dentro do
+pool daquela raridade). 100% testável sem banco.
+
+**O bug que quase entrou: idempotência que protegia o pagamento mas não
+as cartas.** No primeiro rascunho, `openPack` gerava um nonce aleatório
+por chamada para a idempotencyKey da carteira — o que protege contra
+cobrança duplicada, mas um retry genuíno da MESMA interação do Discord
+geraria um nonce DIFERENTE a cada tentativa, então se o pagamento já
+tivesse sido debitado (idempotente, sem cobrar de novo) mas o desenho
+das cartas fosse reexecutado, o jogador ganharia um segundo conjunto de
+cartas de graça. Corrigido antes de qualquer teste ser escrito, não
+depois de um bug encontrado: a chave de idempotência agora vem do
+`interaction.id` do Discord (passado pela camada de comando como
+`requestId`, nunca gerado dentro do serviço), e essa MESMA chave seedeia
+o RNG do sorteio E vira o id explícito do `PackOpening` — então um retry
+genuíno reproduz o mesmo sorteio e `CardRepository.recordPackOpening`
+colide no id primário (mesmo padrão de captura de `P2002` já usado em
+`PrismaWalletRepository`), devolvendo as cartas já sorteadas em vez de
+criar um segundo lote. Testado explicitamente com dois `requestId`
+iguais vs diferentes.
+
+**Ordem das operações minimiza o pior caso.** `openPack` debita a
+carteira (SINK) ANTES de sortear/persistir qualquer carta — se o saldo
+não cobre, `InsufficientFundsError` interrompe tudo sem desenhar nada.
+Se o processo cair entre o débito e o registro das cartas, o pior caso é
+"pago mas sem cartas ainda" — recuperável com um retry (mesmo
+`requestId` reproduz o mesmo sorteio e completa o registro), mesma
+categoria de risco já aceita em Match/Injury, FixtureResult/MatchResult
+e Contract/Transfer.
+
+**Achado durante a autorrevisão desta fase (não um bug de código, um
+gap de UX):** `/carteira` tinha rótulos amigáveis só para
+`MATCH_REWARD`/`INTENSIVE_TRAINING` — as razões `SALARY` e
+`TRANSFER_SIGNING_BONUS`, adicionadas na Fase 6b, apareciam no extrato
+como o código cru em vez de um texto legível. Corrigido junto com a
+adição de `PACK_PURCHASE` nesta fase.
+
+**O que foi validado de verdade:** 20 testes novos (241 no total):
+`drawPackCards` (determinismo, respeita pesos, carta pinada sempre
+resolve pro id fixo, nunca escolhe fora do pool da raridade sorteada,
+erro claro se o pool estiver vazio), `ensureCatalog`/
+`InMemoryCardRepository` (catálogo idempotente, odds corretas, favoritar
+só afeta o dono do UserCard), `openPack` (cobra o preço certo, garante
+exatamente `cardCount` cartas, rejeita saldo insuficiente sem conceder
+nada, rejeita pacote inexistente, retry idêntico não cobra nem sorteia
+de novo, `requestId` diferente é uma compra nova de verdade, a carta
+SPECIAL pinada do Pacote Ouro sempre resolve pro id certo), e
+`viewCollection` (agrupa duplicatas com contagem, ordena por raridade).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Cartas não afetam gameplay.** É uma camada de colecionismo pura por
+  enquanto — nenhuma carta altera squads, partidas ou atributos do
+  jogador real. Conectar cartas ao motor de partida (ex.: "equipar" um
+  bônus) é um gancho natural para uma fase futura, mas fazer isso agora
+  misturaria a validação do loop de colecionismo com a do motor de
+  partida antes de qualquer um dos dois estar provado sozinho.
+- **Favoritar carta não tem comando dedicado.** `UserCard.isFavorite` e
+  `CardRepository.setFavorite` existem e estão testados (inclusive a
+  checagem de que só o dono pode favoritar a própria carta), mas nenhum
+  comando Discord os expõe ainda — fica pronto para quando houver uma
+  visão detalhada de carta (Fase 11, polish).
+- **Level de carta (`UserCard.level`) sempre fica em 1.** Modelado no
+  schema, sem nenhuma mecânica de evolução ainda.
+- **`CardPack.priceTokens`** não é usado — todos os pacotes hoje só têm
+  preço em coins, mesma situação de `Wallet.tokens` (Risco #21).
+- **Catálogo é fixo e pequeno (15 cartas, 3 pacotes).** Sem eventos
+  sazonais, cartas históricas ou expansão do catálogo — o suficiente pra
+  provar o loop de abrir pacotes, não uma coleção "completa".

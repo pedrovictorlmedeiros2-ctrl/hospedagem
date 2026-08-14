@@ -1,0 +1,55 @@
+import {
+  ContainerBuilder,
+  MessageFlags,
+  SeparatorBuilder,
+  SlashCommandBuilder,
+  TextDisplayBuilder,
+} from "discord.js";
+import { PACKS } from "../../cards/domain/catalog.js";
+import { CARD_RARITY_EMOJI, CARD_RARITY_LABELS } from "../../cards/domain/labels.js";
+import { openPack } from "../../cards/services/openPack.js";
+import type { Command } from "./types.js";
+
+const packChoices = PACKS.map((pack) => ({ name: pack.name, value: pack.id }));
+
+export const abrirPacoteCommand: Command = {
+  data: new SlashCommandBuilder()
+    .setName("abrir-pacote")
+    .setDescription("Compra e abre um pacote de cartas.")
+    .addStringOption((opt) =>
+      opt.setName("pacote").setDescription("Qual pacote comprar").setRequired(true).addChoices(...packChoices),
+    ),
+
+  async execute(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const packId = interaction.options.getString("pacote", true);
+
+    const result = await openPack(
+      { userRepository: ctx.userRepository, cardRepository: ctx.cardRepository, walletRepository: ctx.walletRepository },
+      { discordId: interaction.user.id, packId, requestId: interaction.id },
+    );
+
+    const cardLines = result.cards.map((c) => {
+      const base = `${CARD_RARITY_EMOJI[c.rarity]} **${c.name}** (${c.position}, OVR ${c.overall}) — ${CARD_RARITY_LABELS[c.rarity]}`;
+      return c.ability ? `${base}\n   ✨ ${c.ability}` : base;
+    });
+
+    const card = new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🎴 ${result.packName} aberto!`))
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(cardLines.join("\n")))
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`🪙 -${result.coinsSpent} coins • Saldo: ${result.walletBalance} coins`),
+      );
+
+    await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+
+    ctx.logger.info(
+      { discordId: interaction.user.id, packId, cards: result.cards.map((c) => c.id) },
+      "pack opened",
+    );
+  },
+};
