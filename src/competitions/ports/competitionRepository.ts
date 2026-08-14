@@ -8,10 +8,13 @@ export interface GetOrCreateSeasonLeagueInput {
   /**
    * Unique per league — today this is one league per starter-club region
    * (see career/services/playCareerMatch.ts), e.g. "Liga de Acesso — BR".
-   * A competition with this name is only ever generated once; calling
-   * again with the same name is a cheap idempotent read, never a
-   * regeneration (mid-season roster changes are out of scope — see
-   * ADR 0001, Fase 5 addendum).
+   * The pair (competitionName, seasonId) is only ever generated once;
+   * calling again with the same pair is a cheap idempotent read, never a
+   * regeneration (mid-season roster changes are out of scope — see ADR
+   * 0001, Fase 5 addendum). The SAME competitionName is expected to
+   * recur across seasons — that's a new Tournament for the same
+   * long-running competition, not a collision (see ADR 0001, adenda
+   * temporadas).
    */
   competitionName: string;
   teams: LeagueTeamInput[];

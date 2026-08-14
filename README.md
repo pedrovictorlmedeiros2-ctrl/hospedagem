@@ -4,16 +4,16 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 11 — Polish**, a última do roadmap original,
-implementada e testada — encerra as Fases 0 a 11 (discovery, fundação,
-perfil de jogador, motor de partida, carreira, competições, economia,
-cartas, multiplayer, ranking/recordes/rivalidades globais, narrativa via
-Groq e os itens de polish já adiados: carta detalhada/favoritar, correção
-de N+1 na coleção e log de erro deixando de vazar `DATABASE_URL`).
-Rollover de temporada segue conscientemente adiado (ver
-`docs/RISK_REGISTER.md`, risco #33) e é o principal item em aberto. A
-integração real com Discord e Postgres ainda não foi validada neste
-ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
+Estado atual: as Fases 0 a 11 do roadmap original estão completas
+(discovery, fundação, perfil de jogador, motor de partida, carreira,
+competições, economia, cartas, multiplayer, ranking/recordes/rivalidades
+globais, narrativa via Groq, polish) — e, num follow-up pós-Fase 11, o
+rollover automático de temporada também foi implementado e testado
+(fecha o risco #33 do `docs/RISK_REGISTER.md`, que antes era o principal
+item em aberto). Ao esgotar os 12 jogos da liga, `/jogar-carreira`
+avança a carreira pra próxima temporada automaticamente, sem comando
+extra. A integração real com Discord e Postgres ainda não foi validada
+neste ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
 "implementado" significa em cada fase, e
 `docs/adr/0001-stack-and-architecture.md` para as decisões de
 arquitetura.

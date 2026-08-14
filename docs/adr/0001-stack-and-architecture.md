@@ -657,6 +657,26 @@ não de um ajuste "no olho" repetido), o gap de rollover de temporada
 sentido do produto já existente funcionar melhor; são lacunas de escopo
 maior que já têm dono e justificativa registrados em fases anteriores.
 
+## Adenda (pós-Fase 11) — Temporadas: rollover automático por liga, não um relógio global
+
+Fecha o Risco #33, deliberadamente adiado desde a Fase 9: `getOrCreateActiveSeason` estava fixo na temporada 1 para sempre, e qualquer jogador que terminasse os 12 jogos da própria liga (turno e returno contra os 6 rivais) ficava permanentemente bloqueado com `SeasonCompleteError`.
+
+Antes de implementar, havia uma bifurcação genuína de design (não uma simples lacuna de código) — confirmada com o usuário antes de codar:
+
+- **Opção A (escolhida): avanço automático por liga.** Quando um jogador esgota os fixtures da temporada atual, o sistema gera automaticamente a próxima temporada daquela liga (mesmos clubes rivais, calendário novo) e o joga na hora — sem cron, sem gatilho externo, sem infraestrutura nova. Cada `Career` avança seu próprio número de temporada de forma independente; não existe mais "a" temporada ativa global.
+- **Opção B (rejeitada por ora): temporada global com prazo fixo.** `Season.endsAt` viraria real, todo mundo trocaria de temporada junto numa data marcada, via job agendado ou comando de admin. Mais fiel a uma "temporada" no sentido esportivo tradicional, mas exige decidir duração, política pra quem está no meio da temporada quando ela vira, e um mecanismo de disparo (Routine/cron) que não dá pra validar de ponta a ponta neste ambiente. Rejeitada pelo mesmo princípio já usado pra matchmaking/Redis/filas (Risco #7): não adicionar infraestrutura sem tráfego real que a justifique.
+
+Decisões de implementação:
+
+- **`Season` deixou de ser um singleton.** `Season.number` continua `@unique` globalmente, mas agora várias linhas coexistem (temporada 1, 2, 3...) — cada uma é o "mundo compartilhado" de uma geração de ligas, exatamente como o pool de clubes rivais já era compartilhado por nacionalidade. `CareerRepository.getOrCreateActiveSeason()` foi substituído por `getOrCreateSeason(number, now)`, parametrizado.
+- **`Career` ganhou `currentSeasonNumber` (schema + migration manual, já que este ambiente não roda `prisma migrate dev` contra um banco real — mesmo tratamento dado a todo schema change desde a Fase 4).** É esse campo, não mais um relógio global, que determina em qual temporada a liga de um jogador está. Uma carreira nova sempre começa na temporada 1; uma carreira retomada resume de onde parou.
+- **Por que isso não colide (a preocupação original do Risco #33):** investigando o schema mais a fundo durante a implementação, descobri que `Tournament` já tem `@@unique([competitionId, seasonId])` — ou seja, a MESMA competição (`Competition.name`, ex. "Liga de Acesso — BR") pode legitimamente ter um `Tournament` por temporada, sem nenhuma colisão. `leagueNameFor` não precisou ganhar o número da temporada, ao contrário do que a adenda da Fase 9 havia previsto — o design do schema já resolvia isso, só não tinha sido verificado a fundo até agora.
+- **Bug real encontrado e corrigido durante a implementação:** `InMemoryCompetitionRepository.getOrCreateSeasonLeague` (o adapter usado por TODOS os testes) chaveava o `Tournament` só por `competitionName`, ignorando `seasonId` — ao contrário do adapter Prisma, que sempre respeitou a chave composta certa. Sem essa correção, a temporada 2 de qualquer liga silenciosamente reutilizaria o calendário já esgotado da temporada 1, e os testes de rollover teriam passado por acidente (ou travado). Corrigido antes de escrever qualquer teste de rollover, não depois.
+- **`playCareerMatch` faz o rollover dentro da MESMA chamada.** Ao encontrar `getNextFixtureForTeam` nulo: avança `Career.currentSeasonNumber`, chama `ensureCareerStarted` de novo (que resolve a nova temporada/time/clube automaticamente — nenhum outro caller de `ensureCareerStarted` precisou de nenhuma mudança), gera a nova liga via o novo helper `resolveLeagueForSeason` (compartilhado com `viewStandings.ts`, eliminando a duplicação que já existia entre os dois), e joga a primeira partida da nova temporada — tudo numa única resposta de `/jogar-carreira`, sem exigir uma segunda chamada do usuário.
+- **`nextCareerStage` não pode regredir estágio.** Confirmado antes de mexer: a função só promove (`RESERVE`→`PROFESSIONAL`→`STARTER`) e nunca rebaixa, então o reset de `PlayerSeasonStat` por temporada nova não derruba um estágio já conquistado — só pode, na pior das hipóteses, atrasar a PRÓXIMA promoção (mesma categoria de risco de balanceamento já aceita nos Riscos #12/#20).
+- **`seasonNameFor(number)`** (novo, `career/domain/season.ts`) substitui o nome fixo "SEASON 01 — THE BEGINNING" por uma lista cíclica de epítetos — puro, determinístico, testado isoladamente.
+- **UI:** `/jogar-carreira` celebra o rollover ("🎊 Fim da temporada! Você avançou para a Temporada N..."); `/classificacao` mostra o número da temporada no título.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

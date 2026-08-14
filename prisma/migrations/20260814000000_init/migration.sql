@@ -114,6 +114,7 @@ CREATE TABLE "Career" (
     "id" TEXT NOT NULL,
     "playerId" TEXT NOT NULL,
     "stage" "CareerStage" NOT NULL DEFAULT 'BASE',
+    "currentSeasonNumber" INTEGER NOT NULL DEFAULT 1,
     "currentClubId" TEXT,
     "debutAt" TIMESTAMP(3),
     "retiredAt" TIMESTAMP(3),

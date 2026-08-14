@@ -1,4 +1,5 @@
 import { Prisma, type CareerStage, type PrismaClient } from "@prisma/client";
+import { seasonNameFor } from "../domain/season.js";
 import type {
   CareerRecord,
   CareerRepository,
@@ -12,9 +13,6 @@ import type {
   TeamRecord,
 } from "../ports/careerRepository.js";
 
-const ACTIVE_SEASON_NUMBER = 1;
-const SEASON_START = new Date("2026-01-01T00:00:00Z");
-
 /**
  * Real, Postgres-backed implementation. Implemented and typechecked but
  * NOT validated against a live database in this environment — see
@@ -23,13 +21,13 @@ const SEASON_START = new Date("2026-01-01T00:00:00Z");
 export class PrismaCareerRepository implements CareerRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async getOrCreateActiveSeason(): Promise<SeasonRecord> {
+  async getOrCreateSeason(number: number, now: Date): Promise<SeasonRecord> {
     const season = await this.prisma.season.upsert({
-      where: { number: ACTIVE_SEASON_NUMBER },
+      where: { number },
       create: {
-        name: "SEASON 01 — THE BEGINNING",
-        number: ACTIVE_SEASON_NUMBER,
-        startsAt: SEASON_START,
+        name: seasonNameFor(number),
+        number,
+        startsAt: now,
         isActive: true,
       },
       update: {},
@@ -183,6 +181,11 @@ export class PrismaCareerRepository implements CareerRepository {
     return this.toDomain(career);
   }
 
+  async advanceCareerSeason(playerId: string, seasonNumber: number): Promise<CareerRecord> {
+    const career = await this.prisma.career.update({ where: { playerId }, data: { currentSeasonNumber: seasonNumber } });
+    return this.toDomain(career);
+  }
+
   async recordInjury(input: RecordInjuryInput): Promise<void> {
     await this.prisma.injury.create({
       data: {
@@ -206,6 +209,7 @@ export class PrismaCareerRepository implements CareerRepository {
     id: string;
     playerId: string;
     stage: CareerStage;
+    currentSeasonNumber: number;
     currentClubId: string | null;
     debutAt: Date | null;
     isRetired: boolean;
@@ -214,6 +218,7 @@ export class PrismaCareerRepository implements CareerRepository {
       id: career.id,
       playerId: career.playerId,
       stage: career.stage,
+      currentSeasonNumber: career.currentSeasonNumber,
       currentClubId: career.currentClubId,
       debutAt: career.debutAt,
       isRetired: career.isRetired,

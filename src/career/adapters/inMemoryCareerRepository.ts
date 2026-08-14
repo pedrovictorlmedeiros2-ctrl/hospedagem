@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CareerStage } from "@prisma/client";
+import { seasonNameFor } from "../domain/season.js";
 import type {
   CareerRecord,
   CareerRepository,
@@ -13,11 +14,9 @@ import type {
   TeamRecord,
 } from "../ports/careerRepository.js";
 
-const ACTIVE_SEASON_NUMBER = 1;
-
 /** In-memory adapter for tests and local iteration without a real Postgres instance. NOT wired into the running bot. */
 export class InMemoryCareerRepository implements CareerRepository {
-  private season: SeasonRecord | null = null;
+  private readonly seasonsByNumber = new Map<number, SeasonRecord>();
   private readonly clubsByKey = new Map<string, ClubRecord>();
   private readonly clubsById = new Map<string, ClubRecord>();
   private readonly teamsByClubSeason = new Map<string, TeamRecord>();
@@ -26,15 +25,13 @@ export class InMemoryCareerRepository implements CareerRepository {
   private readonly careersByPlayerId = new Map<string, CareerRecord>();
   private readonly injuriesByPlayerId = new Map<string, RecordInjuryInput[]>();
 
-  async getOrCreateActiveSeason(): Promise<SeasonRecord> {
-    if (!this.season) {
-      this.season = {
-        id: randomUUID(),
-        name: "SEASON 01 — THE BEGINNING",
-        number: ACTIVE_SEASON_NUMBER,
-      };
-    }
-    return this.season;
+  async getOrCreateSeason(number: number, _now: Date): Promise<SeasonRecord> {
+    const existing = this.seasonsByNumber.get(number);
+    if (existing) return existing;
+
+    const season: SeasonRecord = { id: randomUUID(), name: seasonNameFor(number), number };
+    this.seasonsByNumber.set(number, season);
+    return season;
   }
 
   async getOrCreateClub(input: GetOrCreateClubInput): Promise<ClubRecord> {
@@ -105,6 +102,7 @@ export class InMemoryCareerRepository implements CareerRepository {
       id: randomUUID(),
       playerId: input.playerId,
       stage: input.stage,
+      currentSeasonNumber: 1,
       currentClubId: input.clubId,
       debutAt: input.debutAt,
       isRetired: false,
@@ -129,6 +127,16 @@ export class InMemoryCareerRepository implements CareerRepository {
       throw new Error(`Internal error: no career for player ${playerId}`);
     }
     const updated = { ...existing, currentClubId: clubId };
+    this.careersByPlayerId.set(playerId, updated);
+    return updated;
+  }
+
+  async advanceCareerSeason(playerId: string, seasonNumber: number): Promise<CareerRecord> {
+    const existing = this.careersByPlayerId.get(playerId);
+    if (!existing) {
+      throw new Error(`Internal error: no career for player ${playerId}`);
+    }
+    const updated = { ...existing, currentSeasonNumber: seasonNumber };
     this.careersByPlayerId.set(playerId, updated);
     return updated;
   }

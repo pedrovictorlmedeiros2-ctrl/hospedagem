@@ -15,9 +15,10 @@ briefing original do produto.
 | 6 | Economy (coins, mercado, transferências, contratos) | ✅ Implementada e testada — coins, recompensas, treino intensivo, contratos com salário e transferências entre clubes da liga | `/carteira`, `/contrato`, `/propostas`, `/transferir`, 52 testes novos (221 no total). Ver seção "O que a Fase 6 entrega" abaixo |
 | 7 | Cards (cartas, packs, inventário) | ✅ Implementada e testada — catálogo fixo, sorteio ponderado, abertura à prova de duplicação | `/pacotes`, `/abrir-pacote`, `/colecao`, 20 testes novos (241 no total). Ver seção "O que a Fase 7 entrega" abaixo |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ✅ Implementada e testada — desafio direto, duelo simulado com o motor real, rating ELO, recompensa em coins | `/duelo-desafiar`, `/duelo-responder`, `/duelos`, 29 testes novos (270 no total). Ver seção "O que a Fase 8 entrega" abaixo |
-| 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | 🟡 Ranking/recordes/rivalidades implementados e testados; rollover de temporada adiado (inalcançável no código atual, ver adenda) | `/ranking`, `/recordes`, `/rivalidade`, 29 testes novos (299 no total). Ver seção "O que a Fase 9 entrega" abaixo e adenda em docs/adr/0001 |
+| 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ✅ Ranking/recordes/rivalidades E rollover de temporada implementados e testados (rollover fechado num follow-up pós-Fase 11 — ver seção "Temporadas" abaixo) | `/ranking`, `/recordes`, `/rivalidade`, 29 testes novos (299 no total). Ver seção "O que a Fase 9 entrega" abaixo e adenda em docs/adr/0001 |
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ✅ Implementada e testada — funciona sem `GROQ_API_KEY` (fallback determinístico é o generator, não um modo degradado) | `/noticias`, `/treinador`, `/entrevista`, 41 testes novos (331 no total). Ver seção "O que a Fase 10 entrega" abaixo e adenda em docs/adr/0001 |
 | 11 | Polish (UX, animações, acessibilidade, performance) | ✅ Implementada e testada — fecha os itens concretos de polish já adiados (carta detalhada/favoritar, N+1 de coleção, log vazando DATABASE_URL); revisão de acessibilidade sem achado; animações N/A pra Discord | `/carta`, `/favoritar`, 16 testes novos (347 no total). Ver seção "O que a Fase 11 entrega" abaixo e adenda em docs/adr/0001 |
+| — | Temporadas (follow-up, fecha o Risco #33 deixado pela Fase 9) | ✅ Implementada e testada — rollover automático por liga, sem infraestrutura nova | `currentSeasonNumber` por carreira, `getOrCreateSeason`/`advanceCareerSeason`, 12 testes novos (352 no total). Ver seção "Temporadas: rollover automático" abaixo e adenda em docs/adr/0001 |
 
 ## Bloqueios ativos para avançar além da Fase 1
 
@@ -792,3 +793,57 @@ original, passa por um valor não-Error/não-string sem alterá-lo).
 - **Pesos de IA/economia/sorteio de pacote não foram recalibrados**
   (Riscos #12/#20/#29) — dependem de dados reais de uso, não de mais um
   ajuste "no olho".
+
+## Temporadas: rollover automático (follow-up, fecha o Risco #33)
+
+A Fase 9 tinha adiado rollover de temporada por um motivo específico:
+`getOrCreateActiveSeason` era fixo na temporada 1 pra sempre, e
+`leagueNameFor` não incluía número de temporada — a suspeita registrada
+na época era que implementar rollover sem antes corrigir isso colidiria
+nomes de liga entre temporadas. Antes de codar este follow-up, essa
+suspeita foi checada a fundo e uma pergunta de design genuína (não coberta
+pela decisão de escopo da Fase 9) foi levada ao usuário — ver a adenda
+completa em docs/adr/0001.
+
+- **Rollover é automático e por liga, não um relógio global.** Ao
+  esgotar os 12 fixtures da temporada atual, o próximo `/jogar-carreira`
+  gera a temporada seguinte na hora (mesmos rivais, calendário novo) e já
+  joga a primeira partida dela — nenhum comando extra, nenhum job
+  agendado, nenhuma infraestrutura nova. `Career.currentSeasonNumber`
+  (campo novo) é o que cada carreira usa pra saber em qual temporada
+  está; não existe mais "a" temporada ativa única.
+- **A suspeita de colisão da Fase 9 estava errada** — `Tournament` já
+  tinha `@@unique([competitionId, seasonId])` no schema desde a Fase 5.
+  A mesma competição (`Competition.name`, ex. "Liga de Acesso — BR")
+  sempre pôde ter um `Tournament` por temporada sem colidir;
+  `leagueNameFor` não precisou de nenhuma mudança.
+- **Bug real encontrado (não o que a Fase 9 previu):**
+  `InMemoryCompetitionRepository.getOrCreateSeasonLeague` — o adapter que
+  TODOS os testes usam — chaveava o torneio só por `competitionName`,
+  ignorando `seasonId`. Sem corrigir isso primeiro, os testes de rollover
+  teriam reutilizado silenciosamente o calendário esgotado da temporada
+  1. Corrigido antes de escrever qualquer teste novo.
+- **`resolveLeagueForSeason`** (novo helper em `ensureLeagueTeams.ts`)
+  elimina a duplicação que já existia entre `playCareerMatch.ts` e
+  `viewStandings.ts` — os dois resolviam rivais/clube inicial/torneio com
+  o mesmo bloco de código copiado.
+- **`seasonNameFor(number)`** substitui o nome fixo "SEASON 01 — THE
+  BEGINNING" por uma lista cíclica de epítetos, puro e testado.
+
+**O que foi validado de verdade:** 12 testes novos (352 no total):
+`seasonNameFor` (zero-padding, cicla os epítetos, determinístico),
+`playCareerMatch` (12 partidas fecham a temporada 1 sem rollover, a 13ª
+chamada rola automaticamente pra temporada 2, `viewStandings` reflete o
+calendário zerado da temporada 2, encadeamento continua funcionando até
+a temporada 3 depois de 25 partidas).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Sem UI de histórico multi-temporada** (ex.: comparar temporada 1 vs.
+  temporada 2 lado a lado) — cada `/classificacao` mostra só a temporada
+  atual da carreira.
+- **`nextCareerStage` não foi recalibrado** para o novo comportamento de
+  "contadores por temporada resetam" — a função já era monotônica
+  (nunca rebaixa estágio), então nenhuma correção era necessária, mas o
+  RITMO de promoção agora pode variar mais entre carreiras que rolam de
+  temporada rápido vs. devagar. Mesma categoria de risco de balanceamento
+  já aceita nos Riscos #12/#20.

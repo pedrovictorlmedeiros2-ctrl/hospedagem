@@ -19,13 +19,3 @@ export class InsufficientStaminaError extends AppError {
     this.name = "InsufficientStaminaError";
   }
 }
-
-export class SeasonCompleteError extends AppError {
-  constructor() {
-    super(
-      "SEASON_COMPLETE",
-      "Você já jogou todas as partidas da liga nesta temporada. Aguarde a próxima temporada.",
-    );
-    this.name = "SeasonCompleteError";
-  }
-}

@@ -1,9 +1,9 @@
 import type { CareerStage } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { InMemoryCareerRepository } from "../../../../src/career/adapters/inMemoryCareerRepository.js";
-import { SeasonCompleteError } from "../../../../src/career/domain/errors.js";
 import { nextCareerStage } from "../../../../src/career/domain/progression.js";
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
+import { viewStandings } from "../../../../src/career/services/viewStandings.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
 import { InMemoryMarketRepository } from "../../../../src/economy/adapters/inMemoryMarketRepository.js";
 import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
@@ -177,7 +177,7 @@ describe("playCareerMatch", () => {
 
     // The league is a double round-robin against the 6 rival clubs = 12
     // fixtures for the season; stay comfortably under that so the test
-    // doesn't run into SeasonCompleteError.
+    // doesn't roll into a new season mid-assertion.
     for (let i = 0; i < 10; i++) {
       now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       const match = await playCareerMatch(deps, { discordId: "discord-1", now });
@@ -232,22 +232,24 @@ describe("playCareerMatch", () => {
     expect(nextMatch.lineupStatus).toBe("BENCH");
   });
 
-  it("plays a full double round-robin season (12 fixtures against 6 distinct rivals, home and away) then refuses a 13th", async () => {
+  it("plays a full double round-robin season (12 fixtures against 6 distinct rivals, home and away), then automatically rolls into season 2 on the 13th call", async () => {
     const deps = makeDeps();
     await createPlayerProfile(deps, profileInput());
 
     let now = new Date("2026-08-14T00:00:00Z");
     const opponents: string[] = [];
     const sides: string[] = [];
+    let lastMatch: Awaited<ReturnType<typeof playCareerMatch>> | undefined;
 
     for (let i = 0; i < 12; i++) {
       now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const match = await playCareerMatch(deps, { discordId: "discord-1", now });
-      opponents.push(match.opponentName);
-      sides.push(match.playerSide);
+      lastMatch = await playCareerMatch(deps, { discordId: "discord-1", now });
+      opponents.push(lastMatch.opponentName);
+      sides.push(lastMatch.playerSide);
     }
 
-    // Every rival faced exactly twice (once home, once away).
+    // Every rival faced exactly twice (once home, once away), and no
+    // rollover happened yet — 12 fixtures exactly fill season 1.
     const countByOpponent = new Map<string, number>();
     for (const opponent of opponents) {
       countByOpponent.set(opponent, (countByOpponent.get(opponent) ?? 0) + 1);
@@ -256,12 +258,49 @@ describe("playCareerMatch", () => {
     for (const count of countByOpponent.values()) {
       expect(count).toBe(2);
     }
+    expect(lastMatch?.seasonRolledOver).toBe(false);
+    expect(lastMatch?.seasonNumber).toBe(1);
 
     // Home/away actually alternates — the player isn't always "home" like Fase 4 assumed.
     expect(sides).toContain("home");
     expect(sides).toContain("away");
 
+    // The 13th call used to throw SeasonCompleteError forever — it now
+    // automatically rolls the career into a fresh season instead.
     now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    await expect(playCareerMatch(deps, { discordId: "discord-1", now })).rejects.toThrow(SeasonCompleteError);
+    const rolledMatch = await playCareerMatch(deps, { discordId: "discord-1", now });
+    expect(rolledMatch.seasonRolledOver).toBe(true);
+    expect(rolledMatch.seasonNumber).toBe(2);
+  });
+
+  it("resets the league calendar and standings for the new season after rollover", async () => {
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    let now = new Date("2026-08-14T00:00:00Z");
+    for (let i = 0; i < 13; i++) {
+      now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      await playCareerMatch(deps, { discordId: "discord-1", now });
+    }
+
+    const view = await viewStandings(deps, { discordId: "discord-1" });
+    expect(view.seasonNumber).toBe(2);
+    // Season 2's fresh calendar has exactly 1 match played (the 13th call above).
+    const totalPlayed = view.standings.reduce((sum, row) => sum + row.played, 0);
+    expect(totalPlayed).toBe(2); // one match = 2 "played" credits (home + away)
+  });
+
+  it("keeps rolling into further seasons on later calls (season 3 after 24 total matches)", async () => {
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    let now = new Date("2026-08-14T00:00:00Z");
+    let lastMatch: Awaited<ReturnType<typeof playCareerMatch>> | undefined;
+    for (let i = 0; i < 25; i++) {
+      now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      lastMatch = await playCareerMatch(deps, { discordId: "discord-1", now });
+    }
+
+    expect(lastMatch?.seasonNumber).toBe(3);
   });
 });

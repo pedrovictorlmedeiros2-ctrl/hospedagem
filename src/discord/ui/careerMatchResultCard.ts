@@ -52,6 +52,11 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   }
 
   const footerLines: string[] = [];
+  if (match.seasonRolledOver) {
+    footerLines.push(
+      `🎊 Fim da temporada! Você avançou para a **Temporada ${match.seasonNumber}** — novo calendário de confrontos pela frente.`,
+    );
+  }
   if (match.stageChanged) {
     footerLines.push(
       `🎉 Promovido! Novo estágio de carreira: **${CAREER_STAGE_LABELS[match.newStage]}**.`,

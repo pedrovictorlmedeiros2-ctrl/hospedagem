@@ -264,6 +264,13 @@ model Career {
   player   Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
   stage    CareerStage @default(BASE)
 
+  // Which Season.number this career's league (fixtures, rivals, starter
+  // club instance) currently belongs to. Season itself has no single
+  // "active" row — each career advances its own number independently the
+  // moment it exhausts its current season's fixtures (see
+  // career/services/playCareerMatch.ts).
+  currentSeasonNumber Int @default(1)
+
   currentClubId String?
   currentClub   Club?   @relation(fields: [currentClubId], references: [id])
 

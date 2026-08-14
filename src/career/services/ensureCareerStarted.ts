@@ -34,6 +34,7 @@ export interface CareerWorldContext {
 export async function ensureCareerStarted(
   deps: EnsureCareerStartedDeps,
   discordId: string,
+  now: Date = new Date(),
 ): Promise<CareerWorldContext> {
   const user = await deps.userRepository.ensureUserForDiscordId(discordId);
   const player = await deps.playerRepository.findByUserId(user.id);
@@ -41,8 +42,11 @@ export async function ensureCareerStarted(
     throw new ProfileNotFoundError();
   }
 
-  const season = await deps.careerRepository.getOrCreateActiveSeason();
   const existingCareer = await deps.careerRepository.getCareer(player.id);
+  // A brand-new career always starts on season 1; a returning career
+  // resumes wherever its own progress last left it (see
+  // Career.currentSeasonNumber and playCareerMatch.ts's rollover).
+  const season = await deps.careerRepository.getOrCreateSeason(existingCareer?.currentSeasonNumber ?? 1, now);
 
   // Once a career exists, its `currentClubId` is the source of truth for
   // which club the player represents — NOT always the deterministic

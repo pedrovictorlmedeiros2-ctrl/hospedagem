@@ -25,6 +25,8 @@ export interface CareerRecord {
   id: string;
   playerId: string;
   stage: CareerStage;
+  /** Which Season.number this career's league is currently on — see CareerRepository.advanceCareerSeason. */
+  currentSeasonNumber: number;
   currentClubId: string | null;
   debutAt: Date | null;
   isRetired: boolean;
@@ -74,7 +76,15 @@ export interface RecordInjuryInput {
  * abstraction for its own sake.
  */
 export interface CareerRepository {
-  getOrCreateActiveSeason(): Promise<SeasonRecord>;
+  /**
+   * Idempotent get-or-create for a specific season NUMBER — there is no
+   * single "the active season" anymore (see Career.currentSeasonNumber):
+   * each career advances its own season independently the moment it
+   * exhausts its current fixtures. `now` is only used the first time this
+   * number is ever created (sets Season.startsAt); ignored on every
+   * subsequent call for the same number.
+   */
+  getOrCreateSeason(number: number, now: Date): Promise<SeasonRecord>;
   getOrCreateClub(input: GetOrCreateClubInput): Promise<ClubRecord>;
   /** Throws if the id doesn't exist — callers only ever pass a `Career.currentClubId` that was itself written by this repository, so a miss means data corruption, not a normal "not found". */
   getClubById(clubId: string): Promise<ClubRecord>;
@@ -89,6 +99,8 @@ export interface CareerRepository {
   updateCareerStage(playerId: string, stage: CareerStage): Promise<CareerRecord>;
   /** Points the career at a new current club — the roster move itself (leaveRoster + ensureOnRoster) is a separate call, see career/services (transfer flow). */
   updateCareerClub(playerId: string, clubId: string): Promise<CareerRecord>;
+  /** Advances a career onto a new season number — called once a player exhausts their current season's league fixtures (see career/services/playCareerMatch.ts). The Season row itself must already exist (getOrCreateSeason first). */
+  advanceCareerSeason(playerId: string, seasonNumber: number): Promise<CareerRecord>;
   recordInjury(input: RecordInjuryInput): Promise<void>;
   /** True if the player has a recorded injury whose expected recovery date is still in the future. */
   hasActiveInjury(playerId: string, now: Date): Promise<boolean>;

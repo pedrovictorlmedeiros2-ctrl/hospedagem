@@ -3,7 +3,7 @@ import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { CareerRepository } from "../ports/careerRepository.js";
 import { ensureCareerStarted } from "./ensureCareerStarted.js";
-import { buildLeagueTeams, ensureRivalTeams, ensureStarterTeam, leagueNameFor } from "./ensureLeagueTeams.js";
+import { leagueNameFor, resolveLeagueForSeason } from "./ensureLeagueTeams.js";
 
 export interface ViewStandingsDeps {
   userRepository: UserRepository;
@@ -16,22 +16,17 @@ export interface ViewStandingsOutput {
   leagueName: string;
   playerTeamId: string;
   standings: StandingRowRecord[];
+  seasonNumber: number;
 }
 
 export async function viewStandings(deps: ViewStandingsDeps, input: { discordId: string }): Promise<ViewStandingsOutput> {
   const { player, team, season } = await ensureCareerStarted(deps, input.discordId);
 
-  const rivals = await ensureRivalTeams(deps.careerRepository, season.id);
   const leagueName = leagueNameFor(player.nationality);
   // See playCareerMatch.ts: league membership is anchored to the fixed
   // starter club, not whichever club the player currently represents.
-  const starter = await ensureStarterTeam(deps.careerRepository, player.nationality, season.id);
-  const { tournamentId } = await deps.competitionRepository.getOrCreateSeasonLeague({
-    seasonId: season.id,
-    competitionName: leagueName,
-    teams: buildLeagueTeams(starter.teamId, starter.teamName, rivals),
-  });
+  const { tournamentId } = await resolveLeagueForSeason(deps.careerRepository, deps.competitionRepository, player, season);
 
   const standings = await deps.competitionRepository.getStandings(tournamentId);
-  return { leagueName, playerTeamId: team.id, standings };
+  return { leagueName, playerTeamId: team.id, standings, seasonNumber: season.number };
 }

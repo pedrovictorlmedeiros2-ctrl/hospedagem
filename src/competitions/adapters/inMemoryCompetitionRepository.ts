@@ -20,15 +20,21 @@ interface TournamentState {
 
 /** In-memory adapter for tests and local iteration without a real Postgres instance. NOT wired into the running bot. */
 export class InMemoryCompetitionRepository implements CompetitionRepository {
-  private readonly tournamentIdByCompetitionName = new Map<string, string>();
+  // Keyed by competitionName+seasonId, not competitionName alone — the
+  // same competition (e.g. "Liga de Acesso — BR") legitimately gets a new
+  // Tournament every season (see career/domain/season.ts and
+  // playCareerMatch.ts's rollover). Mirrors the real uniqueness rule
+  // Postgres enforces via Tournament's [competitionId, seasonId] key.
+  private readonly tournamentIdByCompetitionAndSeason = new Map<string, string>();
   private readonly tournaments = new Map<string, TournamentState>();
 
   async getOrCreateSeasonLeague(input: GetOrCreateSeasonLeagueInput): Promise<{ tournamentId: string }> {
-    const existing = this.tournamentIdByCompetitionName.get(input.competitionName);
+    const key = `${input.competitionName}:${input.seasonId}`;
+    const existing = this.tournamentIdByCompetitionAndSeason.get(key);
     if (existing) return { tournamentId: existing };
 
     const tournamentId = randomUUID();
-    this.tournamentIdByCompetitionName.set(input.competitionName, tournamentId);
+    this.tournamentIdByCompetitionAndSeason.set(key, tournamentId);
 
     const teamNameById = new Map(input.teams.map((team) => [team.teamId, team.teamName]));
     const schedule = generateRoundRobinFixtures(

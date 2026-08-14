@@ -1,7 +1,7 @@
-import type { LeagueTeamInput } from "../../competitions/ports/competitionRepository.js";
+import type { CompetitionRepository, LeagueTeamInput } from "../../competitions/ports/competitionRepository.js";
 import { createRng, randomInt, type Rng } from "../../game/domain/rng.js";
 import { generateClubName, generateDistinctClubName, RIVAL_CLUB_KEYS, starterClubKeyFor } from "../domain/clubNaming.js";
-import type { CareerRepository, ClubRecord } from "../ports/careerRepository.js";
+import type { CareerRepository, ClubRecord, SeasonRecord } from "../ports/careerRepository.js";
 
 /** Fictional country codes for rival clubs — just flavor, not tied to any real confederation. */
 const OPPONENT_COUNTRIES = ["AR", "PT", "ES", "FR", "DE", "IT", "UY", "NL"];
@@ -82,4 +82,26 @@ export async function ensureStarterTeam(
 
 export function buildLeagueTeams(starterTeamId: string, starterClubName: string, rivals: RivalEntry[]): LeagueTeamInput[] {
   return [{ teamId: starterTeamId, teamName: starterClubName }, ...rivals.map((rival) => ({ teamId: rival.teamId, teamName: rival.teamName }))];
+}
+
+/**
+ * Resolves (get-or-create) the league's Tournament for a specific season —
+ * rivals, starter club, calendar generation, all idempotent. Shared by
+ * playCareerMatch.ts (which also drives season rollover once this
+ * league's fixtures are exhausted) and viewStandings.ts, so both always
+ * agree on exactly the same league instance for a given season.
+ */
+export async function resolveLeagueForSeason(
+  careerRepository: CareerRepository,
+  competitionRepository: CompetitionRepository,
+  player: { nationality: string },
+  season: SeasonRecord,
+): Promise<{ tournamentId: string }> {
+  const rivals = await ensureRivalTeams(careerRepository, season.id);
+  const starter = await ensureStarterTeam(careerRepository, player.nationality, season.id);
+  return competitionRepository.getOrCreateSeasonLeague({
+    seasonId: season.id,
+    competitionName: leagueNameFor(player.nationality),
+    teams: buildLeagueTeams(starter.teamId, starter.teamName, rivals),
+  });
 }

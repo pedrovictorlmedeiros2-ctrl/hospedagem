@@ -17,13 +17,12 @@ import { checkAndUpdateRecord } from "../../global/services/checkAndUpdateRecord
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
-import { SeasonCompleteError } from "../domain/errors.js";
 import { rollInjury } from "../domain/injury.js";
 import { decideLineupStatus, type LineupStatus } from "../domain/lineup.js";
 import { nextCareerStage } from "../domain/progression.js";
 import type { CareerRepository } from "../ports/careerRepository.js";
 import { ensureCareerStarted } from "./ensureCareerStarted.js";
-import { buildLeagueTeams, ensureRivalTeams, ensureStarterTeam, leagueNameFor } from "./ensureLeagueTeams.js";
+import { resolveLeagueForSeason } from "./ensureLeagueTeams.js";
 
 const ALL_STYLES: TeamStyle[] = ["DEFENSIVE", "AGGRESSIVE", "POSSESSION", "COUNTER_ATTACK", "DRIBBLING", "TACTICAL"];
 
@@ -67,27 +66,37 @@ export interface PlayCareerMatchOutput {
   salaryPaid: number;
   /** World records broken by this match (today only MOST_GOALS_SEASON can trigger here). */
   recordsBroken: RecordCategory[];
+  /** True when this call also rolled the career into a fresh season (its previous season's fixtures were exhausted). */
+  seasonRolledOver: boolean;
+  /** The season this match was actually played in — after rollover, if any. */
+  seasonNumber: number;
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
   const now = input.now ?? new Date();
-  const { player, career, club, team, season } = await ensureCareerStarted(deps, input.discordId);
+  let { player, career, club, team, season } = await ensureCareerStarted(deps, input.discordId, now);
 
-  const rivals = await ensureRivalTeams(deps.careerRepository, season.id);
   // League membership (starter club + 6 rivals) is fixed independent of
   // which club the player currently represents — see ensureStarterTeam's
   // doc comment. Using `team`/`club` here instead would duplicate an
   // entry once the player has transferred into one of the rivals.
-  const starter = await ensureStarterTeam(deps.careerRepository, player.nationality, season.id);
-  const { tournamentId } = await deps.competitionRepository.getOrCreateSeasonLeague({
-    seasonId: season.id,
-    competitionName: leagueNameFor(player.nationality),
-    teams: buildLeagueTeams(starter.teamId, starter.teamName, rivals),
-  });
+  let { tournamentId } = await resolveLeagueForSeason(deps.careerRepository, deps.competitionRepository, player, season);
+  let fixture = await deps.competitionRepository.getNextFixtureForTeam(tournamentId, team.id);
 
-  const fixture = await deps.competitionRepository.getNextFixtureForTeam(tournamentId, team.id);
-  if (!fixture) {
-    throw new SeasonCompleteError();
+  // This season's league calendar is exhausted — automatically roll the
+  // career onto the next season (same shared rival pool, fresh
+  // double-round-robin) rather than blocking the player forever. See ADR
+  // 0001, adenda temporadas: rollover is per-career/per-league, not a
+  // single synchronized global clock.
+  const seasonRolledOver = fixture === null;
+  if (fixture === null) {
+    await deps.careerRepository.advanceCareerSeason(player.id, season.number + 1);
+    ({ player, career, club, team, season } = await ensureCareerStarted(deps, input.discordId, now));
+    ({ tournamentId } = await resolveLeagueForSeason(deps.careerRepository, deps.competitionRepository, player, season));
+    fixture = await deps.competitionRepository.getNextFixtureForTeam(tournamentId, team.id);
+    if (!fixture) {
+      throw new Error("Internal error: freshly created season has no fixtures for this team");
+    }
   }
 
   const isPlayerHome = fixture.homeTeamId === team.id;
@@ -236,5 +245,7 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     coinsEarned,
     salaryPaid,
     recordsBroken,
+    seasonRolledOver,
+    seasonNumber: season.number,
   };
 }

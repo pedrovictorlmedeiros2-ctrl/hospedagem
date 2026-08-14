@@ -17,7 +17,7 @@ export function buildStandingsCard(view: ViewStandingsOutput): ContainerBuilder 
 
   return new ContainerBuilder()
     .setAccentColor(0x3498db)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🏆 ${view.leagueName}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🏆 ${view.leagueName} — Temporada ${view.seasonNumber}`))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`\`\`\`\n${table}\n\`\`\``));
 }
