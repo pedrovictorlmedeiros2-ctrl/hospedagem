@@ -4,15 +4,14 @@ Jogo de futebol completo integrado ao Discord — carreira, competições,
 cartas, economia, multiplayer e ranking global, com Discord Components V2
 como interface principal.
 
-Estado atual: **Fase 7 — Cards** implementada e testada — pacotes de
-cartas colecionáveis com catálogo fixo, sorteio ponderado por raridade e
-abertura à prova de duplicação/corrida mesmo em retry de rede. Fases 2 a
-6 completas (carreira, competições, economia com salário/transferências).
-A integração real com Discord e Postgres ainda não foi validada neste
-ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
-"implementado" significa em cada fase, e
-`docs/adr/0001-stack-and-architecture.md` para as decisões de
-arquitetura.
+Estado atual: **Fase 8 — Multiplayer** implementada e testada — duelos
+1x1 reais entre dois usuários do Discord, com rating ELO e recompensa em
+coins. Fases 2 a 7 completas (carreira, competições, economia com
+salário/transferências, cartas colecionáveis). A integração real com
+Discord e Postgres ainda não foi validada neste ambiente (sem
+credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa
+em cada fase, e `docs/adr/0001-stack-and-architecture.md` para as
+decisões de arquitetura.
 
 ## Comandos do jogo
 
@@ -34,6 +33,9 @@ arquitetura.
 | `/pacotes` | Mostra os pacotes de cartas disponíveis para comprar |
 | `/abrir-pacote` | Compra e abre um pacote — sorteia cartas por raridade e as adiciona à coleção |
 | `/colecao` | Mostra sua coleção de cartas, agrupada com contagem |
+| `/duelo-desafiar` | Desafia outro usuário do Discord para um duelo 1x1 |
+| `/duelo-responder` | Aceita ou recusa um desafio recebido — se aceitar, o duelo é simulado na hora |
+| `/duelos` | Mostra seus duelos recentes (enviados e recebidos) |
 
 ## Stack
 

@@ -8,6 +8,7 @@ import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
+import type { DuelRepository } from "../../multiplayer/ports/duelRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
 import type { Logger } from "../../shared/logger.js";
@@ -25,6 +26,7 @@ export interface CommandContext {
   walletRepository: WalletRepository;
   marketRepository: MarketRepository;
   cardRepository: CardRepository;
+  duelRepository: DuelRepository;
 }
 
 /**

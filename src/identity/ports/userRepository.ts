@@ -11,4 +11,6 @@ export interface UserRecord {
  */
 export interface UserRepository {
   ensureUserForDiscordId(discordId: string): Promise<UserRecord>;
+  /** Reverse lookup — internal id back to the Discord snowflake. Needed wherever a stored foreign key (e.g. Duel.challengerId) has to be displayed or mentioned back to a Discord user. */
+  getById(userId: string): Promise<UserRecord | null>;
 }

@@ -65,6 +65,7 @@ export interface NewPlayerRecord {
   gkOneOnOne: number | null;
   gkPenalties: number | null;
   overall: number;
+  globalRating: number;
 }
 
 export interface PlayerProfilePatch {
@@ -102,6 +103,7 @@ export interface PlayerAttributesPatch {
   overall?: number;
   form?: number;
   stamina?: number;
+  globalRating?: number;
 }
 
 /**

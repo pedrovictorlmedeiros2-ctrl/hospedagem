@@ -14,7 +14,7 @@ briefing original do produto.
 | 5 | Competitions (ligas, copas, temporadas, seleção) | 🟡 Liga real implementada e testada; mata-mata só no domínio; seleção adiada | `/classificacao`, calendário turno/returno real, 26 testes novos (169 no total). Ver seção "O que a Fase 5 entrega" abaixo |
 | 6 | Economy (coins, mercado, transferências, contratos) | ✅ Implementada e testada — coins, recompensas, treino intensivo, contratos com salário e transferências entre clubes da liga | `/carteira`, `/contrato`, `/propostas`, `/transferir`, 52 testes novos (221 no total). Ver seção "O que a Fase 6 entrega" abaixo |
 | 7 | Cards (cartas, packs, inventário) | ✅ Implementada e testada — catálogo fixo, sorteio ponderado, abertura à prova de duplicação | `/pacotes`, `/abrir-pacote`, `/colecao`, 20 testes novos (241 no total). Ver seção "O que a Fase 7 entrega" abaixo |
-| 8 | Multiplayer (matchmaking, duelos, rating) | ⏳ Não iniciada | Schema já modelado (Duel) |
+| 8 | Multiplayer (matchmaking, duelos, rating) | ✅ Implementada e testada — desafio direto, duelo simulado com o motor real, rating ELO, recompensa em coins | `/duelo-desafiar`, `/duelo-responder`, `/duelos`, 29 testes novos (270 no total). Ver seção "O que a Fase 8 entrega" abaixo |
 | 9 | Global (top global, recordes, rivalidades, Hall of Fame, temporadas) | ⏳ Não iniciada | Schema já modelado (RankingSnapshot/Record/Rivalry) |
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ⏳ Não iniciada | Depende de `GROQ_API_KEY` |
 | 11 | Polish (UX, animações, acessibilidade, performance) | ⏳ Não iniciada | Contínuo, revisado a cada fase anterior também |
@@ -463,3 +463,108 @@ SPECIAL pinada do Pacote Ouro sempre resolve pro id certo), e
 - **Catálogo é fixo e pequeno (15 cartas, 3 pacotes).** Sem eventos
   sazonais, cartas históricas ou expansão do catálogo — o suficiente pra
   provar o loop de abrir pacotes, não uma coleção "completa".
+
+## O que a Fase 8 entrega
+
+`src/multiplayer/` segue o mesmo padrão hexagonal: domínio puro
+(`domain/elo.ts`, `domain/tier.ts`, `domain/duelReward.ts`,
+`domain/labels.ts`, `domain/errors.ts`) → porta
+(`ports/duelRepository.ts`) → adapters Prisma real + in-memory
+(`adapters/`) → serviços (`services/challengeToDuel.ts`,
+`services/respondToDuel.ts`, `services/listDuels.ts`). `Duel` já existia
+no schema desde a Fase 1; esta é a primeira fase a escrever de verdade
+nele.
+
+**A primeira feature do projeto onde os DOIS lados são jogadores reais.**
+Toda fase anterior era "o usuário que chama o comando vs. o mundo
+compartilhado" (clube, mercado, cartas). Um duelo é literalmente dois
+usuários do Discord reais competindo — isso mudou algumas decisões de
+design:
+
+- **Matchmaking v1 é desafio direto por menção (`/duelo-desafiar
+  usuario:@Fulano`), não uma fila automática de pareamento.** Uma fila
+  de verdade (pareamento automático por rating, held sujeita a
+  concorrência entre múltiplos usuários entrando ao mesmo tempo) é
+  infraestrutura real que não deveria ser construída sem dados de tráfego
+  que a justifiquem — mesmo raciocínio já registrado no Risco #7 do ADR
+  ("não adicionar infraestrutura sem tráfego real"). Desafio direto
+  resolve "duelos multiplayer existem e funcionam" sem esse
+  investimento.
+- **O duelo é resolvido no motor de partida JÁ EXISTENTE, sem nenhuma
+  mudança nele.** `buildSquadFromProfile` (Fase 3) já monta "um jogador
+  real + 10 sintéticos" — um duelo simplesmente chama essa função duas
+  vezes (uma pra cada jogador real) em vez de uma vez só + adversário
+  totalmente sintético. Nenhuma linha do motor de simulação foi tocada.
+- **O `Match` simulado do duelo não é persistido como `Match`/
+  `MatchEvent`, só o `Duel` em si.** Mesma decisão estrutural já tomada
+  em `/simular-amistoso` (Fase 3): não existe um `Team`/`Club` natural
+  para ancorar o duelo (não é um jogo de liga, é 1x1 entre pessoas), e
+  forçar a criação de times descartáveis só pra satisfazer as chaves
+  estrangeiras de `Match` seria um mau uso do modelo. `Duel.matchId`
+  fica null por enquanto — decisão consciente, documentada, mesmo padrão
+  de honestidade de escopo da Fase 3.
+- **`Player.globalRating` precisou de um valor inicial de verdade.** O
+  schema tinha `@default(0)` — inofensivo enquanto nada lia esse campo,
+  mas o primeiro duelo de qualquer jogador calcularia um gap de rating
+  absurdo contra qualquer adversário que já tivesse jogado. Corrigido
+  sem migração: `NewPlayerRecord` ganhou um campo `globalRating`
+  explícito, e `createPlayerProfile` passa `STARTING_GLOBAL_RATING`
+  (1000, definido em `player/domain/attributes.ts`) em vez de depender
+  do default da coluna.
+- **Rating ELO (fórmula padrão de xadrez, K=32).** Puro e testado
+  isoladamente: soma zero entre os dois lados (a menos de
+  arredondamento), justo-para-ambos em vitória/derrota, e recompensa mais
+  um azarão vencendo um favorito do que o contrário. Tier (`DuelTier`) é
+  hoje só um rótulo derivado da faixa de rating no momento do desafio —
+  não restringe quem pode desafiar quem, decisão de escopo v1.
+- **Ordem das operações em `respondToDuel`: resolver o duelo (transição
+  guardada PENDING → FINISHED) ANTES de atualizar rating e pagar
+  recompensa — não depois.** Diferente do resto da economia (Fases 6/7),
+  onde a operação idempotente do wallet vem primeiro, aqui a atualização
+  de rating (`Player.globalRating`) não tem nenhum mecanismo de
+  idempotência próprio — é um valor absoluto, não um lançamento de
+  ledger. Se a ordem fosse invertida, um retry genuíno depois de um
+  crash reaplicaria o ELO uma segunda vez (corrompendo o rating). Com a
+  transição do duelo como "trava" primeiro, o pior caso de uma queda no
+  meio do caminho é "duelo resolvido mas rating/recompensa ainda não
+  aplicados" — incompleto, não corrompido, recuperável — mesma categoria
+  de risco já aceita em Injury/Match, FixtureResult/MatchResult e
+  Contract/Transfer.
+- **`UserRepository` ganhou `getById`.** Toda fase anterior só precisava
+  resolver "Discord id → id interno" (`ensureUserForDiscordId`). Listar
+  duelos (`/duelos`) precisa do caminho inverso — o `Duel` grava
+  `challengerId`/`opponentId` como ids internos, e a UI do Discord
+  precisa do `discordId` de volta pra mostrar o nome do adversário.
+
+**O que foi validado de verdade:** 29 testes novos (270 no total):
+`calculateEloUpdate` (soma zero entre os lados, simétrico ao inverter
+quem venceu, zero num empate entre ratings iguais, favorito perde rating
+num empate "esperado" ser vitória, K-factor escala o delta),
+`tierForRating` (faixas corretas), `calculateDuelReward` (nunca zero),
+`InMemoryDuelRepository` (transição guardada PENDING→FINISHED rejeita um
+segundo resolve, `findOpenDuelBetween` funciona nos dois sentidos),
+`challengeToDuel` (autodesafio bloqueado, oponente sem perfil bloqueado,
+desafio duplicado bloqueado), `respondToDuel` (recusar não toca em
+rating nem paga nada, aceitar atualiza os dois ratings em sentidos
+opostos e paga os dois lados, responder um duelo já resolvido é
+rejeitado com uma mensagem clara, responder sem ter um duelo pendente
+daquele desafiante é rejeitado), `listDuels` (papel
+CHALLENGER/OPPONENT correto, contraparte resolvida corretamente).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Fila de matchmaking automática.** Só desafio direto por menção — ver
+  justificativa acima.
+- **Tier não restringe quem pode desafiar quem.** Um BRONZE pode
+  desafiar um ELITE hoje. Fica pra quando houver dados reais de uso pra
+  saber se isso é um problema de verdade.
+- **`Duel.matchId` nunca é preenchido** — o resultado do duelo não vira
+  um `Match`/`MatchEvent` persistido, só o `Duel` com `winnerId`. Ver
+  justificativa acima (mesmo padrão do `/simular-amistoso`).
+- **`Rivalry`** (contagem de vitórias entre os mesmos dois jogadores ao
+  longo do tempo) não foi tocado — pertence à Fase 9 (Global: rankings,
+  recordes, rivalidades), que é exatamente onde o plano original já
+  colocava essa feature, não uma omissão desta fase.
+- **Sem limite de duelos simultâneos por jogador** — um usuário pode ter
+  quantos desafios pendentes recebidos quiser ao mesmo tempo (contra
+  adversários diferentes); só é bloqueado um segundo desafio contra o
+  MESMO adversário enquanto o primeiro estiver aberto.

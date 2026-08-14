@@ -381,6 +381,71 @@ Decisões de arquitetura:
   partida antes de qualquer um dos dois estar provado sozinho — mesma
   disciplina de separação de escopo já usada em toda fase anterior.
 
+## Adenda (Fase 8) — Multiplayer: duelo real reaproveita o motor, sem fila de matchmaking
+
+`src/multiplayer/` entra como um novo contexto hexagonal. É a primeira
+fase onde os DOIS lados de uma interação são jogadores reais — toda fase
+anterior era "o usuário que chama o comando vs. o mundo compartilhado"
+(clube, mercado, cartas).
+
+Decisões de arquitetura:
+
+- **Matchmaking v1 é desafio direto por menção do Discord
+  (`/duelo-desafiar usuario:@Fulano`), não uma fila automática de
+  pareamento.** Uma fila real (pareamento por rating, com concorrência
+  entre múltiplos usuários entrando ao mesmo tempo) é infraestrutura de
+  verdade que não deveria ser construída sem tráfego real que a
+  justifique — mesma decisão já registrada no Risco #7 ("não adicionar
+  infraestrutura sem dados reais"). Desafio direto entrega "duelos
+  multiplayer existem e funcionam de ponta a ponta" sem esse
+  investimento.
+- **O duelo é resolvido pelo motor de partida já existente (Fase 3), sem
+  nenhuma mudança nele.** `buildSquadFromProfile` já monta "um jogador
+  real + 10 sintéticos"; um duelo simplesmente chama essa função duas
+  vezes (uma pra cada jogador real) em vez de uma vez + adversário
+  totalmente sintético (como `playCareerMatch` faz). Prova que o motor
+  foi desenhado com generalidade suficiente desde a Fase 3.
+- **O resultado do duelo não vira `Match`/`MatchEvent` persistido —
+  `Duel.matchId` fica null.** Mesma decisão estrutural do
+  `/simular-amistoso` (adenda Fase 3): não existe `Team`/`Club` natural
+  pra ancorar um 1x1 entre pessoas, e criar times descartáveis só pra
+  satisfazer as chaves estrangeiras de `Match` seria forçar o modelo.
+  Documentado como decisão consciente, não lacuna.
+- **`Player.globalRating` ganhou um valor inicial de verdade
+  (`STARTING_GLOBAL_RATING = 1000`), sem migração de schema.** O
+  `@default(0)` do schema era inofensivo enquanto nada lia esse campo —
+  mas o primeiro duelo de qualquer jogador calcularia um gap de rating
+  absurdo contra qualquer adversário que já tivesse jogado. Corrigido
+  passando `globalRating` explicitamente em `NewPlayerRecord` (mesmo
+  princípio de "valor explícito no create em vez de depender do default
+  da coluna" já usado nos ids fixos do catálogo de cartas, Fase 7).
+- **Ordem das operações em `respondToDuel`: resolver o duelo (transição
+  guardada PENDING → FINISHED) ANTES de atualizar rating e pagar
+  recompensa.** Inverte a ordem usada no resto da economia (Fases 6/7,
+  onde a operação idempotente do wallet vem primeiro) por um motivo
+  específico: `Player.globalRating` é um valor absoluto sem nenhum
+  mecanismo de idempotência próprio (não é um lançamento de ledger como
+  `WalletTransaction`). Se a ordem fosse "rating primeiro, duelo
+  depois", um retry genuíno após um crash reaplicaria o ELO uma segunda
+  vez — corrompendo o rating, não só deixando algo incompleto. Com a
+  transição do duelo como trava primeira, o pior caso de uma queda no
+  meio do caminho é "duelo resolvido mas rating/recompensa ainda não
+  aplicados" — incompleto e recuperável, não corrompido — mesma
+  categoria de risco já aceita em Injury/Match, FixtureResult/
+  MatchResult e Contract/Transfer, mas com a ordem das operações
+  escolhida deliberadamente diferente para caber na garantia mais fraca
+  que uma atualização de rating oferece.
+- **`UserRepository` ganhou `getById`** (Discord id → id interno já
+  existia via `ensureUserForDiscordId`; o caminho inverso não). Listar
+  duelos precisa resolver `challengerId`/`opponentId` (ids internos,
+  gravados no `Duel`) de volta para o `discordId` que a UI do Discord
+  consegue mostrar/mencionar.
+- **Tier (`DuelTier`) não restringe quem pode desafiar quem — é só um
+  rótulo derivado da faixa de rating no momento do desafio.** Uma
+  restrição de verdade (só desafiar tiers próximos) é uma decisão de
+  produto que merece dados reais de uso antes de ser imposta como regra
+  rígida.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

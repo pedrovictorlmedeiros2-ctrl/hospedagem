@@ -1,6 +1,6 @@
 import type { PlayStyle, Position, PreferredFoot } from "@prisma/client";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
-import { calculateInitialAttributes, calculateOverall } from "../domain/attributes.js";
+import { calculateInitialAttributes, calculateOverall, STARTING_GLOBAL_RATING } from "../domain/attributes.js";
 import { DuplicateProfileError } from "../domain/errors.js";
 import {
   validateAge,
@@ -73,5 +73,6 @@ export async function createPlayerProfile(
     shirtNumber: input.shirtNumber,
     ...attributes,
     overall,
+    globalRating: STARTING_GLOBAL_RATING,
   });
 }

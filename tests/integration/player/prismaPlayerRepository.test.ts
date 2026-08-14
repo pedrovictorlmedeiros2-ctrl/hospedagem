@@ -4,6 +4,7 @@ import { PrismaUserRepository } from "../../../src/identity/adapters/prismaUserR
 import {
   calculateInitialAttributes,
   calculateOverall,
+  STARTING_GLOBAL_RATING,
 } from "../../../src/player/domain/attributes.js";
 import { PrismaPlayerRepository } from "../../../src/player/adapters/prismaPlayerRepository.js";
 
@@ -67,6 +68,7 @@ describe.skipIf(!reachable)("PrismaPlayerRepository (integration)", () => {
       shirtNumber: 77,
       ...attributes,
       overall: calculateOverall("ST", attributes),
+      globalRating: STARTING_GLOBAL_RATING,
     });
 
     expect(created.id).toBeTruthy();
@@ -97,6 +99,7 @@ describe.skipIf(!reachable)("PrismaPlayerRepository (integration)", () => {
         shirtNumber: 1,
         ...attributes,
         overall: calculateOverall("GK", attributes),
+        globalRating: STARTING_GLOBAL_RATING,
       }),
     ).rejects.toThrow();
   });

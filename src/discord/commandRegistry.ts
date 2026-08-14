@@ -6,6 +6,9 @@ import { classificacaoCommand } from "./commands/classificacao.js";
 import { colecaoCommand } from "./commands/colecao.js";
 import { contratoCommand } from "./commands/contrato.js";
 import { criarPerfilCommand } from "./commands/criarPerfil.js";
+import { duelodesafiarCommand } from "./commands/duelodesafiar.js";
+import { duelorespondCommand } from "./commands/duelorespond.js";
+import { duelosCommand } from "./commands/duelos.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
 import { pacotesCommand } from "./commands/pacotes.js";
 import { personalizarCommand } from "./commands/personalizar.js";
@@ -41,6 +44,9 @@ export function buildCommandRegistry(): Collection<string, Command> {
     pacotesCommand,
     abrirPacoteCommand,
     colecaoCommand,
+    duelodesafiarCommand,
+    duelorespondCommand,
+    duelosCommand,
   ]) {
     commands.set(command.data.name, command);
   }

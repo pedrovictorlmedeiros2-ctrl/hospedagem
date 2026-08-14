@@ -7,6 +7,7 @@ import type { UserRecord, UserRepository } from "../ports/userRepository.js";
  */
 export class InMemoryUserRepository implements UserRepository {
   private readonly byDiscordId = new Map<string, UserRecord>();
+  private readonly byId = new Map<string, UserRecord>();
 
   async ensureUserForDiscordId(discordId: string): Promise<UserRecord> {
     const existing = this.byDiscordId.get(discordId);
@@ -14,6 +15,11 @@ export class InMemoryUserRepository implements UserRepository {
 
     const record: UserRecord = { id: randomUUID(), discordId };
     this.byDiscordId.set(discordId, record);
+    this.byId.set(record.id, record);
     return record;
+  }
+
+  async getById(userId: string): Promise<UserRecord | null> {
+    return this.byId.get(userId) ?? null;
   }
 }

@@ -39,7 +39,6 @@ export class InMemoryPlayerRepository implements PlayerRepository {
       profileFrame: null,
       profileBackground: null,
       form: 50,
-      globalRating: 0,
       stamina: 100,
       createdAt: now,
       updatedAt: now,

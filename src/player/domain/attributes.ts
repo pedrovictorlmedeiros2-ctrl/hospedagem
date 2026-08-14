@@ -20,6 +20,9 @@ export interface GoalkeeperAttributes {
 
 const BASELINE = 50;
 
+/** Starting ELO-style rating for a brand-new player (see multiplayer/domain/elo.ts) — distinct from the schema's raw column default of 0, which would make a player's very first duel compute an absurd rating gap against anyone who has already played. */
+export const STARTING_GLOBAL_RATING = 1000;
+
 /** Every new player starts at a flat baseline — differentiation comes from training (Fase 4), not creation. */
 export function calculateInitialAttributes(
   position: Position,

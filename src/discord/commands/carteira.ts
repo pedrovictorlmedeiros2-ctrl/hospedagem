@@ -15,6 +15,7 @@ const REASON_LABELS: Record<string, string> = {
   SALARY: "Salário",
   TRANSFER_SIGNING_BONUS: "Bônus de assinatura (transferência)",
   PACK_PURCHASE: "Compra de pacote",
+  DUEL_REWARD: "Recompensa de duelo",
 };
 
 function formatTransactionLine(tx: WalletTransactionRecord): string {
