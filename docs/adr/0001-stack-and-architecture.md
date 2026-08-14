@@ -171,6 +171,44 @@ registradas:
   os mesmos adversários, reforçando a ideia de mundo compartilhado em vez
   de universos paralelos por jogador.
 
+## Adenda (Fase 5) — liga real substitui adversário aleatório
+
+A Fase 4 escolhia um rival aleatório do pool fixo a cada `/jogar-carreira`
+— não era uma competição de verdade, era uma sequência de amistosos. A
+Fase 5 substitui isso por uma liga real: `Competition`/`Tournament` (já
+modelados desde a Fase 1) ganham conteúdo — calendário gerado (método do
+círculo, turno e returno), classificação calculada a partir dos
+`Match`es reais, e `/jogar-carreira` agora joga a próxima rodada
+agendada, não mais um oponente sorteado.
+
+Decisões de escopo:
+
+- **Liga primeiro, mata-mata depois.** O motor de chave eliminatória
+  (`generateKnockoutBracket`) é implementado e testado no domínio, mas
+  não conectado a nenhum comando Discord ainda — não existe ainda uma
+  segunda competição (copa) para ele orquestrar de verdade, e conectar
+  um mata-mata a uma única partida de carreira por vez exigiria decidir
+  fase de grupos + classificação cruzada, o que é escopo de uma fase
+  própria, não um apêndice da Fase 5.
+- **Convocação para seleção fica adiada.** Depende de agregação de
+  desempenho entre múltiplas temporadas/competições (o briefing pede
+  "trajetória plausível") — implementar isso raso agora seria fingir uma
+  feature que não existe de verdade. Fica para quando houver mais de uma
+  temporada real para avaliar.
+- **`MatchRepository.persistMatchResult` ganhou um `existingMatchId`
+  opcional.** As rodadas da liga são criadas como `Match` reais com
+  `status: SCHEDULED` no momento em que a liga é gerada (não só quando
+  são jogadas) — isso é o que permite `getNextFixtureForTeam` consultar
+  "qual é o próximo jogo agendado do meu time" com uma query SQL comum,
+  em vez de reconstruir o calendário a cada chamada. Jogar uma rodada
+  então *atualiza* essa linha existente para `FINISHED`, em vez de criar
+  uma linha nova (que duplicaria a partida no calendário).
+- **Casa/visitante agora é real, não sempre "o jogador é mandante".** A
+  Fase 4 tratava o clube do jogador como mandante em toda partida, o que
+  não é realista. A Fase 5 respeita o lado definido pelo calendário
+  gerado (turno e returno alternam mandante/visitante), e
+  `playCareerMatch` monta os dois elencos de acordo.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

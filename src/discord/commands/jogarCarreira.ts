@@ -16,6 +16,7 @@ export const jogarCarreiraCommand: Command = {
         userRepository: ctx.userRepository,
         playerRepository: ctx.playerRepository,
         careerRepository: ctx.careerRepository,
+        competitionRepository: ctx.competitionRepository,
         matchRepository: ctx.matchRepository,
         events: ctx.events,
       },

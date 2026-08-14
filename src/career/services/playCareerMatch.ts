@@ -1,45 +1,23 @@
-import { randomUUID } from "node:crypto";
 import type { CareerStage } from "@prisma/client";
-import {
-  buildSquadFromProfile,
-  realPlayerMatchId,
-} from "../../game/domain/buildSquadFromProfile.js";
+import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
+import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
-import { createRng, randomInt, weightedPick, type Rng } from "../../game/domain/rng.js";
-import type { MatchResult, TeamStyle } from "../../game/domain/types.js";
+import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
+import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
 import { simulateMatch } from "../../game/engine/simulateMatch.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { UserRepository } from "../../identity/ports/userRepository.js";
 import type { PlayerRepository } from "../../player/ports/playerRepository.js";
 import type { EventBus } from "../../shared/eventBus.js";
-import { generateClubName, RIVAL_CLUB_KEYS } from "../domain/clubNaming.js";
+import { SeasonCompleteError } from "../domain/errors.js";
 import { rollInjury } from "../domain/injury.js";
 import { decideLineupStatus, type LineupStatus } from "../domain/lineup.js";
 import { nextCareerStage } from "../domain/progression.js";
 import type { CareerRepository } from "../ports/careerRepository.js";
 import { ensureCareerStarted } from "./ensureCareerStarted.js";
+import { buildLeagueTeams, ensureRivalTeams, leagueNameFor } from "./ensureLeagueTeams.js";
 
-const ALL_STYLES: TeamStyle[] = [
-  "DEFENSIVE",
-  "AGGRESSIVE",
-  "POSSESSION",
-  "COUNTER_ATTACK",
-  "DRIBBLING",
-  "TACTICAL",
-];
-/** Fictional country codes for rival clubs — just flavor, not tied to any real confederation. */
-const OPPONENT_COUNTRIES = ["AR", "PT", "ES", "FR", "DE", "IT", "UY", "NL"];
-const OPPONENT_TIER = 3;
-const OPPONENT_REPUTATION = 45;
-
-function pickFrom<T>(rng: Rng, options: readonly T[]): T {
-  const index = randomInt(rng, 0, options.length - 1);
-  const value = options[index];
-  if (value === undefined) {
-    throw new Error("Internal error: pickFrom called with an empty options list");
-  }
-  return value;
-}
+const ALL_STYLES: TeamStyle[] = ["DEFENSIVE", "AGGRESSIVE", "POSSESSION", "COUNTER_ATTACK", "DRIBBLING", "TACTICAL"];
 
 function randomStyle(rng: Rng): TeamStyle {
   return weightedPick(
@@ -52,6 +30,7 @@ export interface PlayCareerMatchDeps {
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
   careerRepository: CareerRepository;
+  competitionRepository: CompetitionRepository;
   matchRepository: MatchRepository;
   events: EventBus;
 }
@@ -59,7 +38,7 @@ export interface PlayCareerMatchDeps {
 export interface PlayCareerMatchInput {
   discordId: string;
   now?: Date;
-  /** Overrides the random match seed — exists for deterministic tests, never set by the Discord command. */
+  /** Overrides the random match simulation seed — exists for deterministic tests, never set by the Discord command. */
   seed?: string;
 }
 
@@ -68,60 +47,63 @@ export interface PlayCareerMatchOutput {
   lineupStatus: LineupStatus;
   clubName: string;
   opponentName: string;
+  playerSide: Side;
   stageChanged: boolean;
   previousStage: CareerStage;
   newStage: CareerStage;
   injuryOccurred: boolean;
 }
 
-export async function playCareerMatch(
-  deps: PlayCareerMatchDeps,
-  input: PlayCareerMatchInput,
-): Promise<PlayCareerMatchOutput> {
+export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
   const now = input.now ?? new Date();
   const { player, career, club, team, season } = await ensureCareerStarted(deps, input.discordId);
 
-  const seed = input.seed ?? randomUUID();
-
-  const opponentKey = pickFrom(createRng(`${seed}:opponent-key`), RIVAL_CLUB_KEYS);
-  const opponentClub = await deps.careerRepository.getOrCreateClub({
-    externalKey: opponentKey,
-    name: generateClubName(createRng(opponentKey)),
-    country: pickFrom(createRng(`${opponentKey}:country`), OPPONENT_COUNTRIES),
-    tier: OPPONENT_TIER,
-    reputation: OPPONENT_REPUTATION,
-  });
-  const opponentTeam = await deps.careerRepository.getOrCreateTeam({
-    clubId: opponentClub.id,
+  const rivals = await ensureRivalTeams(deps.careerRepository, season.id);
+  const { tournamentId } = await deps.competitionRepository.getOrCreateSeasonLeague({
     seasonId: season.id,
-    name: opponentClub.name,
+    competitionName: leagueNameFor(player.nationality),
+    teams: buildLeagueTeams(team.id, club.name, rivals),
   });
+
+  const fixture = await deps.competitionRepository.getNextFixtureForTeam(tournamentId, team.id);
+  if (!fixture) {
+    throw new SeasonCompleteError();
+  }
+
+  const isPlayerHome = fixture.homeTeamId === team.id;
+  const opponentTeamId = isPlayerHome ? fixture.awayTeamId : fixture.homeTeamId;
+  const opponentName = isPlayerHome ? fixture.awayTeamName : fixture.homeTeamName;
+  const opponentRival = rivals.find((rival) => rival.teamId === opponentTeamId);
+  if (!opponentRival) {
+    throw new Error(`Internal error: fixture opponent ${opponentTeamId} is not a known rival team`);
+  }
 
   const hasActiveInjury = await deps.careerRepository.hasActiveInjury(player.id, now);
   const lineupStatus = decideLineupStatus({ stamina: player.stamina, hasActiveInjury });
 
+  const seed = input.seed ?? fixture.matchId;
   const squadRng = createRng(`${seed}:squads`);
-  const home = buildSquadFromProfile(player, {
+  const playerSquad = buildSquadFromProfile(player, {
     teamId: team.id,
     teamName: club.name,
     rng: squadRng,
     placement: lineupStatus === "STARTING" ? "STARTING" : "BENCH",
   });
-  const away = generateSquad({
-    teamId: opponentTeam.id,
-    teamName: opponentClub.name,
+  const opponentSquad = generateSquad({
+    teamId: opponentTeamId,
+    teamName: opponentName,
     style: randomStyle(squadRng),
-    avgOverall: opponentClub.reputation + 15,
+    avgOverall: opponentRival.club.reputation + 15,
     rng: squadRng,
   });
 
-  deps.events.emit("MATCH_STARTED", { matchId: seed });
+  const home = isPlayerHome ? playerSquad : opponentSquad;
+  const away = isPlayerHome ? opponentSquad : playerSquad;
+  const playerSide: Side = isPlayerHome ? "home" : "away";
+
+  deps.events.emit("MATCH_STARTED", { matchId: fixture.matchId });
   const result = simulateMatch(home, away, { seed });
-  deps.events.emit("MATCH_FINISHED", {
-    matchId: seed,
-    homeScore: result.homeScore,
-    awayScore: result.awayScore,
-  });
+  deps.events.emit("MATCH_FINISHED", { matchId: fixture.matchId, homeScore: result.homeScore, awayScore: result.awayScore });
 
   const matchPlayerInputId = realPlayerMatchId(player);
   const realStat = result.playerStats.find((stat) => stat.playerId === matchPlayerInputId);
@@ -129,23 +111,22 @@ export async function playCareerMatch(
     // Player.stamina is an Int column — the engine's internal drain math is
     // fractional (see game/engine/stamina.ts), so this must be rounded
     // before it's ever written back.
-    await deps.playerRepository.updateAttributes(player.userId, {
-      stamina: Math.round(realStat.staminaRemaining),
-    });
+    await deps.playerRepository.updateAttributes(player.userId, { stamina: Math.round(realStat.staminaRemaining) });
   }
 
   const persisted = await deps.matchRepository.persistMatchResult({
-    homeTeamId: team.id,
-    awayTeamId: opponentTeam.id,
+    homeTeamId: fixture.homeTeamId,
+    awayTeamId: fixture.awayTeamId,
     seasonId: season.id,
     scheduledAt: now,
     result,
-    realPlayer: { playerId: player.id, matchPlayerInputId, side: "home" },
+    realPlayer: { playerId: player.id, matchPlayerInputId, side: playerSide },
+    existingMatchId: fixture.matchId,
   });
 
-  const injuredInMatch = result.events.some(
-    (event) => event.type === "INJURY" && event.playerId === matchPlayerInputId,
-  );
+  await deps.competitionRepository.recordFixtureResult(tournamentId, fixture.matchId, result.homeScore, result.awayScore);
+
+  const injuredInMatch = result.events.some((event) => event.type === "INJURY" && event.playerId === matchPlayerInputId);
   if (injuredInMatch) {
     const rolled = rollInjury(createRng(`${seed}:injury`), now);
     await deps.careerRepository.recordInjury({
@@ -157,11 +138,7 @@ export async function playCareerMatch(
     });
   }
 
-  const proposedStage = nextCareerStage(
-    career.stage,
-    persisted.seasonStat.matches,
-    persisted.seasonStat.avgRating,
-  );
+  const proposedStage = nextCareerStage(career.stage, persisted.seasonStat.matches, persisted.seasonStat.avgRating);
   const stageChanged = proposedStage !== career.stage;
   if (stageChanged) {
     await deps.careerRepository.updateCareerStage(player.id, proposedStage);
@@ -171,7 +148,8 @@ export async function playCareerMatch(
     result,
     lineupStatus,
     clubName: club.name,
-    opponentName: opponentClub.name,
+    opponentName,
+    playerSide,
     stageChanged,
     previousStage: career.stage,
     newStage: proposedStage,

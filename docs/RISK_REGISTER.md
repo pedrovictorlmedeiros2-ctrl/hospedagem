@@ -25,6 +25,10 @@ de verdade (código + teste), nunca só por ter sido discutido.
 | 15 | `TeamPlayer.ensureOnRoster` não é à prova de corrida real (chave única inclui `joinedAt`, então não dá pra usar upsert limpo) | Baixo — pior caso é uma linha de elenco duplicada numa janela de corrida estreita (primeira entrada de um jogador num time) | Documentado no código do adapter Prisma; corrigir se aparecer de verdade em produção | Aceito, mesmo padrão de risco baixo já usado no Club/User upsert |
 | 16 | Sem recuperação passiva de estamina entre partidas/dias — só no intervalo da partida e ao custo de treinar | Baixo — jogar sem folga deixa a estamina cair até a escalação bancar o jogador automaticamente (efeito colateral aceitável, não é bug) | Fica para quando existir um "calendário real" (Fase 5) com conceito de descanso ativo | Aceito por ora |
 
+| 17 | `getOrCreateSeasonLeague` gera o calendário inteiro com um check-then-act (`count === 0 ? gerar : não`), não atômico | Baixo — só importa numa corrida verdadeira na primeira chamada para uma nacionalidade nova; pior caso é calendário duplicado | Documentado no adapter Prisma; mesmo padrão de risco aceito já usado em Club/User upsert | Aceito conscientemente |
+| 18 | `recordFixtureResult` não é atômico com `MatchRepository.persistMatchResult` (dois passos separados) | Baixo — pior caso é uma rodada aparecer como "não jogada" e ser oferecida de novo, não corrupção de dado ou classificação errada (Prisma recalcula do zero a partir de `Match`) | Documentado em ADR 0001 (adenda Fase 5) e no port | Aceito, mesmo padrão do `CareerRepository.recordInjury` |
+| 19 | `Tournament.status` nunca transiciona para `FINISHED` | Nenhum — nada lê esse campo ainda | Fechar quando houver lógica real de troca de temporada | Aceito por ora |
+
 ## Nota sobre `npm audit`
 
 Ao instalar as dependências iniciais, `npm audit` reportou 5 vulnerabilidades

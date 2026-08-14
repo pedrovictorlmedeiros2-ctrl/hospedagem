@@ -1,5 +1,6 @@
 import { Collection } from "discord.js";
 import { carreiraCommand } from "./commands/carreira.js";
+import { classificacaoCommand } from "./commands/classificacao.js";
 import { criarPerfilCommand } from "./commands/criarPerfil.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
 import { personalizarCommand } from "./commands/personalizar.js";
@@ -25,6 +26,7 @@ export function buildCommandRegistry(): Collection<string, Command> {
     carreiraCommand,
     treinarCommand,
     jogarCarreiraCommand,
+    classificacaoCommand,
   ]) {
     commands.set(command.data.name, command);
   }

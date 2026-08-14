@@ -34,6 +34,22 @@ export function generateClubName(rng: Rng): string {
   return `${type} ${place}`;
 }
 
+/**
+ * Like `generateClubName`, but for a fixed, small, known set of clubs that
+ * will all be displayed together (e.g. a league table) — two independent
+ * random draws for `type`/`place` can collide by chance (found in
+ * practice: two of the 6 rival clubs both generated as "Clube Recreativo
+ * Porto Novo"). Indexing `place` directly by `ordinal` instead guarantees
+ * every club in the set gets a distinct place name as long as
+ * `ordinal < PLACE_NAMES.length` (true for any set up to 12 clubs) — only
+ * `type` stays randomized for flavor.
+ */
+export function generateDistinctClubName(rng: Rng, ordinal: number): string {
+  const type = CLUB_TYPES[randomInt(rng, 0, CLUB_TYPES.length - 1)];
+  const place = PLACE_NAMES[ordinal % PLACE_NAMES.length];
+  return `${type} ${place}`;
+}
+
 /** A fixed, shared pool of rival clubs — every career in the world plays against the same handful of opponents, rather than each user getting isolated single-player rivals. */
 export const RIVAL_CLUB_KEYS = [
   "rival-club-1",

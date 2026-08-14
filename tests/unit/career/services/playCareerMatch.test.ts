@@ -1,8 +1,10 @@
 import type { CareerStage } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { InMemoryCareerRepository } from "../../../../src/career/adapters/inMemoryCareerRepository.js";
+import { SeasonCompleteError } from "../../../../src/career/domain/errors.js";
 import { nextCareerStage } from "../../../../src/career/domain/progression.js";
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
+import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
@@ -19,6 +21,7 @@ function makeDeps() {
     userRepository: new InMemoryUserRepository(),
     playerRepository: new InMemoryPlayerRepository(),
     careerRepository: new InMemoryCareerRepository(),
+    competitionRepository: new InMemoryCompetitionRepository(),
     matchRepository: new InMemoryMatchRepository(),
     events: new EventBus(fakeLogger()),
   };
@@ -120,7 +123,10 @@ describe("playCareerMatch", () => {
     let now = new Date("2026-08-14T00:00:00Z");
     let previousStage: CareerStage = "RESERVE";
 
-    for (let i = 0; i < 15; i++) {
+    // The league is a double round-robin against the 6 rival clubs = 12
+    // fixtures for the season; stay comfortably under that so the test
+    // doesn't run into SeasonCompleteError.
+    for (let i = 0; i < 10; i++) {
       now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       const match = await playCareerMatch(deps, { discordId: "discord-1", now });
 
@@ -144,15 +150,18 @@ describe("playCareerMatch", () => {
     // A real player is only one of 22 on the pitch, so per-match injury
     // odds for them specifically are low (~0.7%, from the ~32/200 overall
     // rate in the Fase 3 engine tests, divided across 22 players) — a
-    // small random sample would be flaky. `injury-search-372` was found by
-    // brute-forcing seeds through this exact service until one produced an
-    // INJURY event for the real player, so this test is deterministic
-    // instead of statistical.
+    // small random sample would be flaky. `injury-search-v2-294` was
+    // found by brute-forcing seeds through this exact service until one
+    // produced an INJURY event for the real player, so this test is
+    // deterministic instead of statistical. (Re-searched for Fase 5 —
+    // home/away assignment now follows the real fixture instead of
+    // always putting the player at home, which changes engine RNG
+    // draws enough that the Fase 4 seed no longer reproduces an injury.)
     const deps = makeDeps();
     await createPlayerProfile(deps, profileInput());
     const now = new Date("2026-08-14T00:00:00Z");
 
-    const match = await playCareerMatch(deps, { discordId: "discord-1", now, seed: "injury-search-372" });
+    const match = await playCareerMatch(deps, { discordId: "discord-1", now, seed: "injury-search-v2-294" });
     expect(match.injuryOccurred).toBe(true);
 
     const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
@@ -169,5 +178,38 @@ describe("playCareerMatch", () => {
       seed: "post-injury-match",
     });
     expect(nextMatch.lineupStatus).toBe("BENCH");
+  });
+
+  it("plays a full double round-robin season (12 fixtures against 6 distinct rivals, home and away) then refuses a 13th", async () => {
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    let now = new Date("2026-08-14T00:00:00Z");
+    const opponents: string[] = [];
+    const sides: string[] = [];
+
+    for (let i = 0; i < 12; i++) {
+      now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const match = await playCareerMatch(deps, { discordId: "discord-1", now });
+      opponents.push(match.opponentName);
+      sides.push(match.playerSide);
+    }
+
+    // Every rival faced exactly twice (once home, once away).
+    const countByOpponent = new Map<string, number>();
+    for (const opponent of opponents) {
+      countByOpponent.set(opponent, (countByOpponent.get(opponent) ?? 0) + 1);
+    }
+    expect(countByOpponent.size).toBe(6);
+    for (const count of countByOpponent.values()) {
+      expect(count).toBe(2);
+    }
+
+    // Home/away actually alternates — the player isn't always "home" like Fase 4 assumed.
+    expect(sides).toContain("home");
+    expect(sides).toContain("away");
+
+    now = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    await expect(playCareerMatch(deps, { discordId: "discord-1", now })).rejects.toThrow(SeasonCompleteError);
   });
 });

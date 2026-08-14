@@ -57,19 +57,21 @@ export class PrismaMatchRepository implements MatchRepository {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const match = await tx.match.create({
-        data: {
-          homeTeamId: input.homeTeamId,
-          awayTeamId: input.awayTeamId,
-          status: "FINISHED",
-          homeScore: result.homeScore,
-          awayScore: result.awayScore,
-          scheduledAt: input.scheduledAt,
-          startedAt: input.scheduledAt,
-          finishedAt: input.scheduledAt,
-          simulationSeed: result.seed,
-        },
-      });
+      const matchData = {
+        homeTeamId: input.homeTeamId,
+        awayTeamId: input.awayTeamId,
+        status: "FINISHED" as const,
+        homeScore: result.homeScore,
+        awayScore: result.awayScore,
+        scheduledAt: input.scheduledAt,
+        startedAt: input.scheduledAt,
+        finishedAt: input.scheduledAt,
+        simulationSeed: result.seed,
+      };
+
+      const match = input.existingMatchId
+        ? await tx.match.update({ where: { id: input.existingMatchId }, data: matchData })
+        : await tx.match.create({ data: matchData });
 
       const eventRows = result.events
         .map((event) => {

@@ -23,6 +23,14 @@ export interface PersistMatchResultInput {
   scheduledAt: Date;
   result: MatchResult;
   realPlayer: RealPlayerMatchContribution;
+  /**
+   * When set, updates this already-existing `Match` row (created as
+   * SCHEDULED ahead of time, e.g. a league fixture — see
+   * competitions/ports/competitionRepository.ts) to FINISHED instead of
+   * creating a new one. Omit to create a fresh Match (e.g. a one-off
+   * friendly with no pre-generated calendar).
+   */
+  existingMatchId?: string;
 }
 
 export interface PersistedSeasonStat {

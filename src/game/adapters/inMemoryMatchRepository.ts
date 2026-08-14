@@ -33,7 +33,7 @@ export class InMemoryMatchRepository implements MatchRepository {
       );
     }
 
-    const matchId = randomUUID();
+    const matchId = input.existingMatchId ?? randomUUID();
     this.recorded.push({ matchId, input });
 
     const key = `${realPlayer.playerId}:${input.seasonId}`;

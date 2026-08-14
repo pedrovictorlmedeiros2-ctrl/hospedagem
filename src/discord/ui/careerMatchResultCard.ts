@@ -24,12 +24,17 @@ function highlightLines(result: MatchResult): string[] {
 export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): ContainerBuilder {
   const { result } = match;
 
+  // The player's club isn't always the home side anymore — a real league
+  // calendar alternates home/away — so the scoreline must follow
+  // `playerSide`, not assume the player is always listed first.
+  const homeName = match.playerSide === "home" ? match.clubName : match.opponentName;
+  const awayName = match.playerSide === "home" ? match.opponentName : match.clubName;
+  const playerPossessionPct = match.playerSide === "home" ? result.homePossessionPct : 100 - result.homePossessionPct;
+
   const summaryLines = [
-    `**${match.clubName} ${result.homeScore} x ${result.awayScore} ${match.opponentName}**`,
-    `Posse de bola: ${result.homePossessionPct}% x ${100 - result.homePossessionPct}%`,
-    match.lineupStatus === "STARTING"
-      ? "Você começou entre os titulares."
-      : "Você começou no banco.",
+    `**${homeName} ${result.homeScore} x ${result.awayScore} ${awayName}**`,
+    `Posse de bola — você: ${playerPossessionPct}% • ${match.opponentName}: ${100 - playerPossessionPct}%`,
+    match.lineupStatus === "STARTING" ? "Você começou entre os titulares." : "Você começou no banco.",
   ];
 
   const container = new ContainerBuilder()

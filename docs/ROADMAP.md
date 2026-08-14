@@ -11,7 +11,7 @@ briefing original do produto.
 | 2 | Player (`/criar-perfil`, personalização) | 🟡 Implementado, não validado contra Discord/Postgres reais | Domínio + serviços + comandos completos, 57 testes unitários verdes. Ver seção "O que 'implementado' significa aqui" abaixo |
 | 3 | Game Engine (núcleo da partida, IA) | 🟡 Núcleo implementado e testado; sem persistência nem UI ao vivo ainda | Motor puro/determinístico + `/simular-amistoso`, 34 testes novos. Ver seção "O que a Fase 3 entrega" abaixo e adenda em docs/adr/0001 |
 | 4 | Career (treino, escalação, calendário) | 🟡 Implementado e testado; primeira partida com persistência real | `/carreira`, `/treinar`, `/jogar-carreira`, 19 testes novos (137 no total). Ver seção "O que a Fase 4 entrega" abaixo |
-| 5 | Competitions (ligas, copas, temporadas, seleção) | ⏳ Não iniciada | Schema já suporta genericamente (Competition/Tournament/Stage) |
+| 5 | Competitions (ligas, copas, temporadas, seleção) | 🟡 Liga real implementada e testada; mata-mata só no domínio; seleção adiada | `/classificacao`, calendário turno/returno real, 26 testes novos (169 no total). Ver seção "O que a Fase 5 entrega" abaixo |
 | 6 | Economy (coins, mercado, transferências, contratos) | ⏳ Não iniciada | Schema do ledger já modelado (WalletTransaction) |
 | 7 | Cards (cartas, packs, inventário) | ⏳ Não iniciada | Schema já modelado (Card/CardPack/PackOdds/UserCard) |
 | 8 | Multiplayer (matchmaking, duelos, rating) | ⏳ Não iniciada | Schema já modelado (Duel) |
@@ -167,11 +167,61 @@ ignorado.
   vários dias seguidos sem folga drena estamina permanentemente até a
   escalação te bota no banco automaticamente — realista, mas não existe
   ainda um "descanso" ativo que o jogador possa escolher.
-- **Calendário real.** "Uma sessão de treino por dia" e "uma partida por
-  chamada de comando" usam cooldown por horas, não um calendário semanal
-  de verdade (treino/jogo/folga por dia da semana, como o briefing
-  descreve). Isso é uma estrutura maior que fica para quando a Fase 5
-  (competições/calendário de liga) existir.
+- **Calendário real de treino.** "Uma sessão de treino por dia" ainda usa
+  cooldown por horas, não um calendário semanal de verdade
+  (treino/jogo/folga por dia da semana). A Fase 5 resolveu a metade
+  "partida" disso (calendário de liga real); a metade "treino" continua
+  pendente.
 - **Transferências/contratos.** O jogador fica no clube inicial para
   sempre neste v1; `Contract`/`Transfer` (já modelados no schema) não são
   usados ainda — isso é Fase 6 (Economy).
+
+## O que a Fase 5 entrega
+
+`src/competitions/` segue o mesmo padrão hexagonal. `Competition` e
+`Tournament` (modelados desde a Fase 1) ganham conteúdo de verdade:
+calendário gerado pelo método do círculo (turno e returno — cada clube
+enfrenta cada rival uma vez em casa, uma vez fora), classificação
+calculada a partir dos `Match`es reais, e `/jogar-carreira` agora joga a
+próxima rodada agendada, não mais um oponente sorteado a cada chamada.
+
+**O que foi validado de verdade:** 26 testes novos (169 no total),
+incluindo um teste de integração que joga a temporada inteira via
+`playCareerMatch` (12 partidas, contra os 6 rivais exatamente 2 vezes
+cada — uma em casa, uma fora — e confirma que a 13ª chamada é recusada
+com `SeasonCompleteError`). Também testado: fixtures round-robin corretas
+para contagem par e ímpar de times, classificação com desempate por
+saldo de gols/gols marcados, chave de mata-mata seedada (1º contra
+último), e que duas carreiras da mesma nacionalidade enxergam
+exatamente a mesma liga.
+
+**Bug real encontrado e corrigido na autorrevisão:** dois clubes rivais
+diferentes podiam gerar o **mesmo nome de exibição** (dois sorteios
+independentes de tipo+cidade colidindo — aconteceu de verdade num teste
+manual: dois clubes distintos ambos "Clube Recreativo Porto Novo" na
+mesma tabela). Corrigido indexando o nome do lugar pelo número de ordem
+do rival (0 a 5) em vez de sortear independentemente — garante nomes
+distintos para o pool fixo de 6 rivais.
+
+**Decisões de arquitetura registradas** (ver adenda "Fase 5" em
+`docs/adr/0001-stack-and-architecture.md`): liga primeiro, mata-mata
+depois (motor de chave testado no domínio, não conectado a nenhum
+comando ainda); convocação para seleção adiada (precisa de histórico
+entre temporadas que ainda não existe); `MatchRepository` ganhou
+`existingMatchId` opcional para atualizar uma rodada agendada em vez de
+sempre criar uma partida nova; casa/visitante agora é real (a Fase 4
+sempre tratava o clube do jogador como mandante, o que não era
+realista).
+
+**O que NÃO foi implementado ainda:**
+- **Mata-mata conectado a um comando.** `generateKnockoutBracket` existe
+  e está testado, mas nenhuma copa real usa ele ainda.
+- **`Tournament.status` nunca vira `FINISHED`.** Fica `IN_PROGRESS` para
+  sempre, mesmo depois da temporada esgotada — não afeta nada
+  funcionalmente hoje (nada lê esse campo), mas é uma lacuna a fechar
+  quando houver transição real de temporada.
+- **Liga só cresce até o primeiro grupo de times gerado por
+  nacionalidade.** Se um novo jogador de uma nacionalidade já vista
+  aparecer depois da liga gerada, ele entra no mesmo clube/liga
+  normalmente (era esse o design). O que não existe é uma liga que
+  aceita novos CLUBES no meio da temporada — decisão consciente, ver ADR.

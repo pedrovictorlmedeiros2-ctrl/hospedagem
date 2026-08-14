@@ -1,5 +1,6 @@
 import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";
 import { PrismaTrainingRepository } from "./career/adapters/prismaTrainingRepository.js";
+import { PrismaCompetitionRepository } from "./competitions/adapters/prismaCompetitionRepository.js";
 import { loadEnv } from "./config/env.js";
 import { getPrismaClient, disconnectPrisma } from "./database/prisma.js";
 import { createDiscordClient } from "./discord/client.js";
@@ -18,6 +19,7 @@ async function main() {
   const playerRepository = new PrismaPlayerRepository(prisma);
   const careerRepository = new PrismaCareerRepository(prisma);
   const trainingRepository = new PrismaTrainingRepository(prisma);
+  const competitionRepository = new PrismaCompetitionRepository(prisma);
   const matchRepository = new PrismaMatchRepository(prisma);
 
   const client = createDiscordClient({
@@ -28,6 +30,7 @@ async function main() {
     playerRepository,
     careerRepository,
     trainingRepository,
+    competitionRepository,
     matchRepository,
   });
 
