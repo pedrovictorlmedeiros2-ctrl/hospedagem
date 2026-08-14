@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { PrismaAchievementRepository } from "./achievements/adapters/prismaAchievementRepository.js";
 import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";
 import { PrismaTrainingRepository } from "./career/adapters/prismaTrainingRepository.js";
 import { PrismaCardRepository } from "./cards/adapters/prismaCardRepository.js";
@@ -53,6 +54,7 @@ async function main() {
   const recordRepository = new PrismaRecordRepository(prisma);
   const rivalryRepository = new PrismaRivalryRepository(prisma);
   const newsRepository = new PrismaNewsRepository(prisma);
+  const achievementRepository = new PrismaAchievementRepository(prisma);
 
   // Groq is purely the narrative layer's primary text source — never in
   // the gameplay-critical path (see ADR 0001, adenda Fase 10). Without a
@@ -102,6 +104,7 @@ async function main() {
     rivalryRepository,
     narrativeGenerator,
     newsRepository,
+    achievementRepository,
   });
 
   let shuttingDown = false;

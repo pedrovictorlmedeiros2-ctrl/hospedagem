@@ -677,6 +677,19 @@ Decisões de implementação:
 - **`seasonNameFor(number)`** (novo, `career/domain/season.ts`) substitui o nome fixo "SEASON 01 — THE BEGINNING" por uma lista cíclica de epítetos — puro, determinístico, testado isoladamente.
 - **UI:** `/jogar-carreira` celebra o rollover ("🎊 Fim da temporada! Você avançou para a Temporada N..."); `/classificacao` mostra o número da temporada no título.
 
+## Adenda (follow-up) — Conquistas: catálogo fixo + integração inline (não fire-and-forget)
+
+Fecha o Risco #35 (conquistas mencionadas no prompt mestre, deliberadamente adiadas nas Fases 9/10 por serem "um sistema de progressão independente que merece seu próprio ciclo"). `Achievement`/`UserAchievement` já existiam no schema desde a Fase 0 — esta adenda é só ports/adapters/serviços/comandos, sem migration nova.
+
+Decisões de arquitetura:
+
+- **Catálogo pequeno e deliberadamente fechado no v1: 6 conquistas** (`FIRST_MATCH`, `FIRST_WIN`, `FIRST_GOAL`, `WORLD_RECORD`, `DUEL_WINNER`, `FIRST_PACK`), cada uma disparada por um dado que o chamador JÁ tem em mãos depois de uma chamada de serviço existente (resultado de partida, resultado de duelo, abertura de pacote) — nenhuma instrumentação nova de evento foi necessária. Conquistas que dependeriam de contadores vitalícios (ex.: "10 partidas jogadas", que exigiria um agregado cross-temporada que `PlayerSeasonStat` não mantém) ficaram fora deste v1.
+- **Diferente da notícia de recorde (Fase 10), o desbloqueio de conquista é SÍNCRONO, dentro do próprio serviço que a disparou — não um evento assíncrono.** É uma escrita determinística e rápida no banco (get-or-create idempotente), não uma chamada a um LLM externo lento/não confiável — não há o mesmo motivo para isolar via `EventBus`. `checkAndUnlockAchievements(deps, userId, candidateKeys, now)` é chamado diretamente por `playCareerMatch`, `respondToDuel` e `openPack`, e o resultado (`achievementsUnlocked`) é devolvido no mesmo output que a Discord UI já usa pra montar o card — permite celebrar a conquista na mesma resposta, sem esperar um segundo turno.
+- **`unlock` é idempotente por (userId, key)** — retorna `true` só na primeira vez, `false` em toda chamada seguinte, nunca lança erro nem duplica. Isso é o que permite os call sites simplesmente "declarar candidatos" (`achievementCandidates.push("FIRST_WIN")`) sem se preocupar em checar antes se o usuário já tem a conquista — o repositório garante a idempotência.
+- **`respondToDuel` precisa rastrear qual JOGADOR quebrou o recorde, não só que "algum recorde foi quebrado".** O loop existente de `checkAndUpdateRecord` (Fase 9) só acumulava `recordsBroken: RecordCategory[]` compartilhado entre os dois lados do duelo — insuficiente pra saber de quem é a conquista `WORLD_RECORD`. Adicionado `recordBreakerPlayerIds: Set<string>` ao lado do loop existente, sem mudar o comportamento de `recordsBroken` em si.
+- **`achievementUnlockLines` (novo, `discord/ui/`)** é o único lugar que sabe formatar "🏅 Conquista desbloqueada: X!" — reaproveitado por `careerMatchResultCard.ts`, `duelResultCard.ts` (uma vez por lado) e `abrirPacote.ts`, evitando reconstruir o mapa key→nome em cada um.
+- **`/conquistas` mostra o catálogo inteiro, bloqueadas incluídas** (🔒/✅), não só as já desbloqueadas — dá uma noção de progresso ("3/6"), mesmo padrão de "mostrar o que falta" já usado em `/recordes` (Hall da Fama) e `/carreira`.
+
 ## Consequências
 
 - Toda integração com Discord/Groq/Postgres exige credenciais reais que

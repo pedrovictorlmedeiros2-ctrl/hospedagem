@@ -21,6 +21,7 @@ export const jogarCarreiraCommand: Command = {
         walletRepository: ctx.walletRepository,
         marketRepository: ctx.marketRepository,
         recordRepository: ctx.recordRepository,
+        achievementRepository: ctx.achievementRepository,
         events: ctx.events,
       },
       { discordId: interaction.user.id },

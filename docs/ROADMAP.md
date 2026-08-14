@@ -19,6 +19,7 @@ briefing original do produto.
 | 10 | Groq (narrativa: notícias, treinador, entrevistas) | ✅ Implementada e testada — funciona sem `GROQ_API_KEY` (fallback determinístico é o generator, não um modo degradado) | `/noticias`, `/treinador`, `/entrevista`, 41 testes novos (331 no total). Ver seção "O que a Fase 10 entrega" abaixo e adenda em docs/adr/0001 |
 | 11 | Polish (UX, animações, acessibilidade, performance) | ✅ Implementada e testada — fecha os itens concretos de polish já adiados (carta detalhada/favoritar, N+1 de coleção, log vazando DATABASE_URL); revisão de acessibilidade sem achado; animações N/A pra Discord | `/carta`, `/favoritar`, 16 testes novos (347 no total). Ver seção "O que a Fase 11 entrega" abaixo e adenda em docs/adr/0001 |
 | — | Temporadas (follow-up, fecha o Risco #33 deixado pela Fase 9) | ✅ Implementada e testada — rollover automático por liga, sem infraestrutura nova | `currentSeasonNumber` por carreira, `getOrCreateSeason`/`advanceCareerSeason`, 12 testes novos (352 no total). Ver seção "Temporadas: rollover automático" abaixo e adenda em docs/adr/0001 |
+| — | Conquistas (follow-up, fecha o Risco #35 deixado pelas Fases 9/10) | ✅ Implementada e testada — catálogo fixo de 6 conquistas, desbloqueio síncrono integrado a carreira/duelo/pacote | `/conquistas`, 17 testes novos (369 no total). Ver seção "Conquistas" abaixo e adenda em docs/adr/0001 |
 
 ## Bloqueios ativos para avançar além da Fase 1
 
@@ -847,3 +848,64 @@ a temporada 3 depois de 25 partidas).
   RITMO de promoção agora pode variar mais entre carreiras que rolam de
   temporada rápido vs. devagar. Mesma categoria de risco de balanceamento
   já aceita nos Riscos #12/#20.
+
+## Conquistas (follow-up, fecha o Risco #35)
+
+`Achievement`/`UserAchievement` já existiam no schema desde a Fase 0 —
+este follow-up é só ports/adapters/serviços/comandos, sem migration
+nova. Novo contexto hexagonal `src/achievements/`: domínio (catálogo
+fixo de 6 conquistas) → porta (`AchievementRepository`) → adapters
+Prisma + in-memory → serviços (`checkAndUnlockAchievements`,
+`viewAchievements`).
+
+- **6 conquistas no v1**, cada uma disparada por um dado que o chamador
+  já tem em mãos: `FIRST_MATCH`/`FIRST_WIN`/`FIRST_GOAL` (em
+  `playCareerMatch`), `WORLD_RECORD` (em `playCareerMatch` e
+  `respondToDuel`, quando `checkAndUpdateRecord` confirma um recorde
+  batido), `DUEL_WINNER` (em `respondToDuel`, pro lado vencedor),
+  `FIRST_PACK` (em `openPack`). Nenhuma instrumentação de evento nova
+  foi necessária.
+- **Desbloqueio é síncrono, não um evento assíncrono** — diferente da
+  notícia de recorde (Fase 10), que roda via `EventBus` porque envolve
+  uma chamada a LLM lenta/não confiável. Desbloquear uma conquista é uma
+  escrita de banco rápida e determinística, então
+  `checkAndUnlockAchievements` é chamado direto dentro de
+  `playCareerMatch`/`respondToDuel`/`openPack`, e o resultado
+  (`achievementsUnlocked`) já sai no mesmo output que a UI usa — dá pra
+  celebrar na mesma resposta do comando, sem precisar de um segundo turno.
+- **`unlock` é idempotente por (userId, key)** — `true` só na primeira
+  vez, `false` em toda chamada seguinte. Os call sites só "declaram
+  candidatos" sem se preocupar em checar se o usuário já tem a conquista.
+- **`/conquistas`** mostra o catálogo inteiro — desbloqueadas (✅) e
+  bloqueadas (🔒) — dando uma noção de progresso ("3/6"), mesmo padrão
+  de "mostrar o que falta" já usado em `/recordes`.
+- **`achievementUnlockLines`** (novo, `discord/ui/`) é reaproveitado por
+  `careerMatchResultCard.ts`, `duelResultCard.ts` (uma vez por lado do
+  duelo) e `abrirPacote.ts`.
+
+**O que foi validado de verdade:** 17 testes novos (369 no total):
+`InMemoryAchievementRepository` (unlock idempotente, isolado por
+usuário, lista mais-recente-primeiro), `checkAndUnlockAchievements`
+(unlocks em lote, não re-reporta o que já foi desbloqueado, semeia o
+catálogo sozinho), `viewAchievements` (catálogo completo bloqueado antes
+de qualquer unlock, reflete timestamp real, nunca mistura usuários),
+integração em `playCareerMatch` (FIRST_MATCH na primeira partida e nunca
+mais, FIRST_GOAL+WORLD_RECORD juntos reaproveitando o seed
+"goal-search-2" da Fase 9, FIRST_WIN com um seed determinístico
+brute-forced "win-search-13"), `respondToDuel` (DUEL_WINNER pro lado
+certo, WORLD_RECORD pro lado que realmente bateu o recorde), `openPack`
+(FIRST_PACK no primeiro pacote e nunca mais).
+
+**O que NÃO foi implementado (decisão consciente):**
+- **Conquistas de contador vitalício** (ex.: "jogue 10 partidas",
+  "vença 5 duelos") ficaram fora — exigiriam um agregado cross-temporada
+  que `PlayerSeasonStat` não mantém hoje (é escopado por temporada, e
+  temporadas resetam via rollover). Fica para quando houver justificativa
+  de produto para esse tipo de agregado.
+- **Sem notificação/celebração fora do card da ação que desbloqueou** —
+  uma conquista só aparece na resposta do comando que a disparou; não há
+  um DM ou canal de anúncio separado.
+- **Level de recompensa por conquista não existe** — desbloquear uma
+  conquista hoje não paga coins nem dá cartas, é puramente de progresso/
+  vaidade. Adicionar recompensa é uma extensão pequena quando houver
+  justificativa de produto.

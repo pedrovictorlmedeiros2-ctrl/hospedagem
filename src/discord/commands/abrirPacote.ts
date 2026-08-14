@@ -8,6 +8,7 @@ import {
 import { PACKS } from "../../cards/domain/catalog.js";
 import { CARD_RARITY_EMOJI, CARD_RARITY_LABELS } from "../../cards/domain/labels.js";
 import { openPack } from "../../cards/services/openPack.js";
+import { achievementUnlockLines } from "../ui/achievementUnlockLines.js";
 import type { Command } from "./types.js";
 
 const packChoices = PACKS.map((pack) => ({ name: pack.name, value: pack.id }));
@@ -26,7 +27,12 @@ export const abrirPacoteCommand: Command = {
     const packId = interaction.options.getString("pacote", true);
 
     const result = await openPack(
-      { userRepository: ctx.userRepository, cardRepository: ctx.cardRepository, walletRepository: ctx.walletRepository },
+      {
+        userRepository: ctx.userRepository,
+        cardRepository: ctx.cardRepository,
+        walletRepository: ctx.walletRepository,
+        achievementRepository: ctx.achievementRepository,
+      },
       { discordId: interaction.user.id, packId, requestId: interaction.id },
     );
 
@@ -44,6 +50,11 @@ export const abrirPacoteCommand: Command = {
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`🪙 -${result.coinsSpent} coins • Saldo: ${result.walletBalance} coins`),
       );
+
+    const unlockLines = achievementUnlockLines(result.achievementsUnlocked);
+    if (unlockLines.length > 0) {
+      card.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(unlockLines.join("\n")));
+    }
 
     await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 

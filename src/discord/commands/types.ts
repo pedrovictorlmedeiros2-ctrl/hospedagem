@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { ChatInputCommandInteraction } from "discord.js";
+import type { AchievementRepository } from "../../achievements/ports/achievementRepository.js";
 import type { CareerRepository } from "../../career/ports/careerRepository.js";
 import type { TrainingRepository } from "../../career/ports/trainingRepository.js";
 import type { CardRepository } from "../../cards/ports/cardRepository.js";
@@ -35,6 +36,7 @@ export interface CommandContext {
   rivalryRepository: RivalryRepository;
   narrativeGenerator: NarrativeGenerator;
   newsRepository: NewsRepository;
+  achievementRepository: AchievementRepository;
 }
 
 /**

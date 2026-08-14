@@ -24,6 +24,7 @@ export const duelorespondCommand: Command = {
         walletRepository: ctx.walletRepository,
         recordRepository: ctx.recordRepository,
         rivalryRepository: ctx.rivalryRepository,
+        achievementRepository: ctx.achievementRepository,
         events: ctx.events,
       },
       { discordId: interaction.user.id, challengerDiscordId: challenger.id, accept },

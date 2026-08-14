@@ -7,13 +7,14 @@ como interface principal.
 Estado atual: as Fases 0 a 11 do roadmap original estão completas
 (discovery, fundação, perfil de jogador, motor de partida, carreira,
 competições, economia, cartas, multiplayer, ranking/recordes/rivalidades
-globais, narrativa via Groq, polish) — e, num follow-up pós-Fase 11, o
-rollover automático de temporada também foi implementado e testado
-(fecha o risco #33 do `docs/RISK_REGISTER.md`, que antes era o principal
-item em aberto). Ao esgotar os 12 jogos da liga, `/jogar-carreira`
-avança a carreira pra próxima temporada automaticamente, sem comando
-extra. A integração real com Discord e Postgres ainda não foi validada
-neste ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
+globais, narrativa via Groq, polish), mais dois follow-ups que fecham os
+últimos riscos em aberto: **rollover automático de temporada** (risco
+#33 — ao esgotar os 12 jogos da liga, `/jogar-carreira` avança a
+carreira pra próxima temporada sozinho) e **conquistas** (risco #35 —
+catálogo fixo de 6 conquistas desbloqueadas em `/jogar-carreira`,
+`/duelo-responder` e `/abrir-pacote`, consultável via `/conquistas`). A
+integração real com Discord e Postgres ainda não foi validada neste
+ambiente (sem credenciais) — ver `docs/ROADMAP.md` para o que
 "implementado" significa em cada fase, e
 `docs/adr/0001-stack-and-architecture.md` para as decisões de
 arquitetura.
@@ -49,6 +50,7 @@ arquitetura.
 | `/entrevista pergunta:...` | Faz uma pergunta de entrevista pro seu jogador responder, em primeira pessoa |
 | `/carta nome:...` | Mostra a visão detalhada de uma carta do catálogo (atributos, habilidade, cópias possuídas) |
 | `/favoritar nome:...` | Favorita ou desfavorita uma carta da sua coleção |
+| `/conquistas` | Mostra seu progresso de conquistas (desbloqueadas e bloqueadas) |
 
 ## Stack
 

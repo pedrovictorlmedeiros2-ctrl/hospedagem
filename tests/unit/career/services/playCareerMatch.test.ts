@@ -6,6 +6,7 @@ import { playCareerMatch } from "../../../../src/career/services/playCareerMatch
 import { viewStandings } from "../../../../src/career/services/viewStandings.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
 import { InMemoryMarketRepository } from "../../../../src/economy/adapters/inMemoryMarketRepository.js";
+import { InMemoryAchievementRepository } from "../../../../src/achievements/adapters/inMemoryAchievementRepository.js";
 import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryMatchRepository } from "../../../../src/game/adapters/inMemoryMatchRepository.js";
@@ -29,6 +30,7 @@ function makeDeps() {
     walletRepository: new InMemoryWalletRepository(),
     marketRepository: new InMemoryMarketRepository(),
     recordRepository: new InMemoryRecordRepository(),
+    achievementRepository: new InMemoryAchievementRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -302,5 +304,49 @@ describe("playCareerMatch", () => {
     }
 
     expect(lastMatch?.seasonNumber).toBe(3);
+  });
+
+  it("unlocks FIRST_MATCH on the very first career match, and never again", async () => {
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    const first = await playCareerMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
+    expect(first.achievementsUnlocked).toContain("FIRST_MATCH");
+
+    const second = await playCareerMatch(deps, { discordId: "discord-1", now: new Date("2026-08-15T00:00:00Z") });
+    expect(second.achievementsUnlocked).not.toContain("FIRST_MATCH");
+  });
+
+  it("unlocks FIRST_GOAL and WORLD_RECORD together when the real player scores their first career goal", async () => {
+    // Reuses the deterministic "goal-search-2" seed already established
+    // above — the real player scoring for the first time in the world
+    // also breaks MOST_GOALS_SEASON, so both unlock in the same call.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    const match = await playCareerMatch(deps, {
+      discordId: "discord-1",
+      now: new Date("2026-08-14T00:00:00Z"),
+      seed: "goal-search-2",
+    });
+
+    expect(match.achievementsUnlocked).toContain("FIRST_GOAL");
+    expect(match.achievementsUnlocked).toContain("WORLD_RECORD");
+  });
+
+  it("unlocks FIRST_WIN when the real player's team wins the match", async () => {
+    // "win-search-13" was found by brute-forcing seeds through this exact
+    // service until one produced a WIN for the real player's team — same
+    // deterministic technique as the goal/injury seeds above.
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    const match = await playCareerMatch(deps, {
+      discordId: "discord-1",
+      now: new Date("2026-08-14T00:00:00Z"),
+      seed: "win-search-13",
+    });
+
+    expect(match.achievementsUnlocked).toContain("FIRST_WIN");
   });
 });

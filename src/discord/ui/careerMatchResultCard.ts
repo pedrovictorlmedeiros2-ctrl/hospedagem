@@ -2,6 +2,7 @@ import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.
 import { CAREER_STAGE_LABELS } from "../../career/domain/labels.js";
 import type { PlayCareerMatchOutput } from "../../career/services/playCareerMatch.js";
 import type { MatchResult, SimMatchEventType } from "../../game/domain/types.js";
+import { achievementUnlockLines } from "./achievementUnlockLines.js";
 
 const HIGHLIGHT_TYPES: SimMatchEventType[] = [
   "GOAL",
@@ -70,6 +71,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   if (match.recordsBroken.includes("MOST_GOALS_SEASON")) {
     footerLines.push("🏆 **NOVO RECORDE MUNDIAL DE GOLS NUMA TEMPORADA!** Confira /recordes.");
   }
+  footerLines.push(...achievementUnlockLines(match.achievementsUnlocked));
   if (footerLines.length > 0) {
     container
       .addSeparatorComponents(new SeparatorBuilder())

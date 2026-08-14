@@ -1,4 +1,7 @@
 import type { CardRarity } from "@prisma/client";
+import type { AchievementKey } from "../../achievements/domain/catalog.js";
+import type { AchievementRepository } from "../../achievements/ports/achievementRepository.js";
+import { checkAndUnlockAchievements } from "../../achievements/services/checkAndUnlockAchievements.js";
 import { drawPackCards } from "../domain/packOpening.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import { createRng } from "../../game/domain/rng.js";
@@ -11,6 +14,7 @@ export interface OpenPackDeps {
   userRepository: UserRepository;
   cardRepository: CardRepository;
   walletRepository: WalletRepository;
+  achievementRepository: AchievementRepository;
 }
 
 export interface OpenPackInput {
@@ -33,6 +37,7 @@ export interface OpenPackOutput {
   cards: CardRecord[];
   coinsSpent: number;
   walletBalance: bigint;
+  achievementsUnlocked: AchievementKey[];
 }
 
 export async function openPack(deps: OpenPackDeps, input: OpenPackInput): Promise<OpenPackOutput> {
@@ -95,5 +100,12 @@ export async function openPack(deps: OpenPackDeps, input: OpenPackInput): Promis
     cards.push(details);
   }
 
-  return { packName: pack.name, cards, coinsSpent: Number(pack.priceCoins), walletBalance: balanceAfter };
+  const achievementsUnlocked = await checkAndUnlockAchievements(
+    { achievementRepository: deps.achievementRepository },
+    user.id,
+    ["FIRST_PACK"],
+    new Date(),
+  );
+
+  return { packName: pack.name, cards, coinsSpent: Number(pack.priceCoins), walletBalance: balanceAfter, achievementsUnlocked };
 }

@@ -5,6 +5,7 @@ import { challengeToDuel } from "../../../../src/multiplayer/services/challengeT
 import { respondToDuel } from "../../../../src/multiplayer/services/respondToDuel.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
+import { InMemoryAchievementRepository } from "../../../../src/achievements/adapters/inMemoryAchievementRepository.js";
 import { InMemoryRivalryRepository } from "../../../../src/global/adapters/inMemoryRivalryRepository.js";
 import { InMemoryUserRepository } from "../../../../src/identity/adapters/inMemoryUserRepository.js";
 import { InMemoryPlayerRepository } from "../../../../src/player/adapters/inMemoryPlayerRepository.js";
@@ -26,6 +27,7 @@ function makeDeps() {
     walletRepository: new InMemoryWalletRepository(),
     recordRepository: new InMemoryRecordRepository(),
     rivalryRepository: new InMemoryRivalryRepository(),
+    achievementRepository: new InMemoryAchievementRepository(),
     events: new EventBus(fakeLogger()),
   };
 }
@@ -137,6 +139,38 @@ describe("respondToDuel", () => {
       expect(result.rivalryChallengerWins).toBe(0);
       expect(result.rivalryOpponentWins).toBe(0);
     }
+  });
+
+  it("unlocks DUEL_WINNER for the winning side and WORLD_RECORD for whichever side broke the rating record", async () => {
+    const deps = makeDeps();
+    await setupChallenge(deps);
+
+    const result = await respondToDuel(deps, {
+      discordId: "discord-2",
+      challengerDiscordId: "discord-1",
+      accept: true,
+      seed: "test-seed-1",
+    });
+    if (!result.accepted) throw new Error("test setup failed: expected the duel to resolve");
+
+    if (result.outcome === "CHALLENGER_WIN") {
+      expect(result.challengerAchievementsUnlocked).toContain("DUEL_WINNER");
+      expect(result.opponentAchievementsUnlocked).not.toContain("DUEL_WINNER");
+    } else if (result.outcome === "OPPONENT_WIN") {
+      expect(result.opponentAchievementsUnlocked).toContain("DUEL_WINNER");
+      expect(result.challengerAchievementsUnlocked).not.toContain("DUEL_WINNER");
+    } else {
+      expect(result.challengerAchievementsUnlocked).not.toContain("DUEL_WINNER");
+      expect(result.opponentAchievementsUnlocked).not.toContain("DUEL_WINNER");
+    }
+
+    // Both players started fresh, so whichever side's rating moved set a
+    // new HIGHEST_GLOBAL_RATING record — same reasoning as the
+    // recordsBroken assertion above, just split by side here.
+    const worldRecordUnlockedSomewhere =
+      result.challengerAchievementsUnlocked.includes("WORLD_RECORD") ||
+      result.opponentAchievementsUnlocked.includes("WORLD_RECORD");
+    expect(worldRecordUnlockedSomewhere).toBe(true);
   });
 
   it("rejects responding to a duel that was already resolved", async () => {

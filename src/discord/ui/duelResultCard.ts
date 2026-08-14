@@ -1,6 +1,7 @@
 import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 import type { DuelResolvedOutput } from "../../multiplayer/services/respondToDuel.js";
 import type { MatchResult, SimMatchEventType } from "../../game/domain/types.js";
+import { achievementUnlockLines } from "./achievementUnlockLines.js";
 
 const HIGHLIGHT_TYPES: SimMatchEventType[] = ["GOAL", "PENALTY_SCORED", "PENALTY_MISSED", "RED_CARD"];
 const MAX_HIGHLIGHTS = 10;
@@ -53,6 +54,16 @@ export function buildDuelResultCard(
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent("🏆 **NOVO RECORDE MUNDIAL DE RATING!** Confira /recordes."),
       );
+  }
+
+  const unlockLines = [
+    ...achievementUnlockLines(output.challengerAchievementsUnlocked).map((line) => `${challengerName} — ${line}`),
+    ...achievementUnlockLines(output.opponentAchievementsUnlocked).map((line) => `${opponentName} — ${line}`),
+  ];
+  if (unlockLines.length > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(unlockLines.join("\n")));
   }
 
   return container;

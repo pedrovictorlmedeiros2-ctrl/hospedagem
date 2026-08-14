@@ -3,6 +3,7 @@ import { InMemoryCareerRepository } from "../../../../src/career/adapters/inMemo
 import { playCareerMatch } from "../../../../src/career/services/playCareerMatch.js";
 import { InMemoryCompetitionRepository } from "../../../../src/competitions/adapters/inMemoryCompetitionRepository.js";
 import { InMemoryMarketRepository } from "../../../../src/economy/adapters/inMemoryMarketRepository.js";
+import { InMemoryAchievementRepository } from "../../../../src/achievements/adapters/inMemoryAchievementRepository.js";
 import { InMemoryRecordRepository } from "../../../../src/global/adapters/inMemoryRecordRepository.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
 import { TransferCooldownError } from "../../../../src/economy/domain/errors.js";
@@ -31,6 +32,7 @@ function makeDeps() {
     walletRepository: new InMemoryWalletRepository(),
     marketRepository: new InMemoryMarketRepository(),
     recordRepository: new InMemoryRecordRepository(),
+    achievementRepository: new InMemoryAchievementRepository(),
     events: new EventBus(fakeLogger()),
   };
 }

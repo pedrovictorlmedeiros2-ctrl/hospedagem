@@ -1,3 +1,6 @@
+import type { AchievementKey } from "../../achievements/domain/catalog.js";
+import type { AchievementRepository } from "../../achievements/ports/achievementRepository.js";
+import { checkAndUnlockAchievements } from "../../achievements/services/checkAndUnlockAchievements.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import { buildSquadFromProfile } from "../../game/domain/buildSquadFromProfile.js";
 import { createRng } from "../../game/domain/rng.js";
@@ -23,6 +26,7 @@ export interface RespondToDuelDeps {
   walletRepository: WalletRepository;
   recordRepository: RecordRepository;
   rivalryRepository: RivalryRepository;
+  achievementRepository: AchievementRepository;
   events: EventBus;
 }
 
@@ -54,6 +58,8 @@ export interface DuelResolvedOutput {
   recordsBroken: RecordCategory[];
   rivalryChallengerWins: number;
   rivalryOpponentWins: number;
+  challengerAchievementsUnlocked: AchievementKey[];
+  opponentAchievementsUnlocked: AchievementKey[];
 }
 
 export type RespondToDuelOutput = DuelDeclinedOutput | DuelResolvedOutput;
@@ -124,6 +130,7 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
   await deps.playerRepository.updateAttributes(responder.id, { globalRating: eloUpdate.newOpponentRating });
 
   const recordsBroken: RecordCategory[] = [];
+  const recordBreakerPlayerIds = new Set<string>();
   for (const [playerId, newRating] of [
     [challengerPlayer.id, eloUpdate.newChallengerRating],
     [opponentPlayer.id, eloUpdate.newOpponentRating],
@@ -132,7 +139,10 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
       { recordRepository: deps.recordRepository, events: deps.events },
       { category: "HIGHEST_GLOBAL_RATING", playerId, value: newRating, now },
     );
-    if (check.isNewRecord) recordsBroken.push("HIGHEST_GLOBAL_RATING");
+    if (check.isNewRecord) {
+      recordsBroken.push("HIGHEST_GLOBAL_RATING");
+      recordBreakerPlayerIds.add(playerId);
+    }
   }
 
   const winnerPlayerId =
@@ -168,6 +178,26 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
     idempotencyKey: `duel-reward:${duel.id}:opponent`,
   });
 
+  const challengerAchievementCandidates: AchievementKey[] = [];
+  if (outcome === "CHALLENGER_WIN") challengerAchievementCandidates.push("DUEL_WINNER");
+  if (recordBreakerPlayerIds.has(challengerPlayer.id)) challengerAchievementCandidates.push("WORLD_RECORD");
+  const challengerAchievementsUnlocked = await checkAndUnlockAchievements(
+    { achievementRepository: deps.achievementRepository },
+    challenger.id,
+    challengerAchievementCandidates,
+    now,
+  );
+
+  const opponentAchievementCandidates: AchievementKey[] = [];
+  if (outcome === "OPPONENT_WIN") opponentAchievementCandidates.push("DUEL_WINNER");
+  if (recordBreakerPlayerIds.has(opponentPlayer.id)) opponentAchievementCandidates.push("WORLD_RECORD");
+  const opponentAchievementsUnlocked = await checkAndUnlockAchievements(
+    { achievementRepository: deps.achievementRepository },
+    responder.id,
+    opponentAchievementCandidates,
+    now,
+  );
+
   return {
     accepted: true,
     result,
@@ -181,5 +211,7 @@ export async function respondToDuel(deps: RespondToDuelDeps, input: RespondToDue
     recordsBroken,
     rivalryChallengerWins,
     rivalryOpponentWins,
+    challengerAchievementsUnlocked,
+    opponentAchievementsUnlocked,
   };
 }

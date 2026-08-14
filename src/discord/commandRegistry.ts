@@ -5,6 +5,7 @@ import { cartaCommand } from "./commands/carta.js";
 import { carteiraCommand } from "./commands/carteira.js";
 import { classificacaoCommand } from "./commands/classificacao.js";
 import { colecaoCommand } from "./commands/colecao.js";
+import { conquistasCommand } from "./commands/conquistas.js";
 import { contratoCommand } from "./commands/contrato.js";
 import { criarPerfilCommand } from "./commands/criarPerfil.js";
 import { duelodesafiarCommand } from "./commands/duelodesafiar.js";
@@ -63,6 +64,7 @@ export function buildCommandRegistry(): Collection<string, Command> {
     noticiasCommand,
     treinadorCommand,
     entrevistaCommand,
+    conquistasCommand,
   ]) {
     commands.set(command.data.name, command);
   }

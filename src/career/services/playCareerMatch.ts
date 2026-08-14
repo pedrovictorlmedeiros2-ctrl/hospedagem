@@ -1,4 +1,7 @@
 import type { CareerStage } from "@prisma/client";
+import type { AchievementKey } from "../../achievements/domain/catalog.js";
+import type { AchievementRepository } from "../../achievements/ports/achievementRepository.js";
+import { checkAndUnlockAchievements } from "../../achievements/services/checkAndUnlockAchievements.js";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
 import { ageFromBirthDate } from "../../economy/domain/marketValue.js";
 import type { MarketRepository } from "../../economy/ports/marketRepository.js";
@@ -42,6 +45,7 @@ export interface PlayCareerMatchDeps {
   walletRepository: WalletRepository;
   marketRepository: MarketRepository;
   recordRepository: RecordRepository;
+  achievementRepository: AchievementRepository;
   events: EventBus;
 }
 
@@ -70,6 +74,8 @@ export interface PlayCareerMatchOutput {
   seasonRolledOver: boolean;
   /** The season this match was actually played in — after rollover, if any. */
   seasonNumber: number;
+  /** Achievements unlocked for the first time by this specific match. */
+  achievementsUnlocked: AchievementKey[];
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
@@ -172,17 +178,18 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   }
 
   let coinsEarned = 0;
+  let matchOutcome: "WIN" | "DRAW" | "LOSS" | null = null;
   if (realStat) {
     const playerScore = playerSide === "home" ? result.homeScore : result.awayScore;
     const opponentScore = playerSide === "home" ? result.awayScore : result.homeScore;
-    const outcome = playerScore > opponentScore ? "WIN" : playerScore === opponentScore ? "DRAW" : "LOSS";
+    matchOutcome = playerScore > opponentScore ? "WIN" : playerScore === opponentScore ? "DRAW" : "LOSS";
 
     const reward = await grantMatchReward(
       { walletRepository: deps.walletRepository },
       {
         userId: player.userId,
         matchId: fixture.matchId,
-        outcome,
+        outcome: matchOutcome,
         lineupStatus,
         goals: realStat.goals,
         assists: realStat.assists,
@@ -232,6 +239,17 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     await deps.careerRepository.updateCareerStage(player.id, proposedStage);
   }
 
+  const achievementCandidates: AchievementKey[] = ["FIRST_MATCH"];
+  if (matchOutcome === "WIN") achievementCandidates.push("FIRST_WIN");
+  if (realStat && realStat.goals > 0) achievementCandidates.push("FIRST_GOAL");
+  if (recordsBroken.length > 0) achievementCandidates.push("WORLD_RECORD");
+  const achievementsUnlocked = await checkAndUnlockAchievements(
+    { achievementRepository: deps.achievementRepository },
+    player.userId,
+    achievementCandidates,
+    now,
+  );
+
   return {
     result,
     lineupStatus,
@@ -247,5 +265,6 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     recordsBroken,
     seasonRolledOver,
     seasonNumber: season.number,
+    achievementsUnlocked,
   };
 }

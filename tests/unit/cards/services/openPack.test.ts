@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryAchievementRepository } from "../../../../src/achievements/adapters/inMemoryAchievementRepository.js";
 import { InMemoryCardRepository } from "../../../../src/cards/adapters/inMemoryCardRepository.js";
 import { openPack } from "../../../../src/cards/services/openPack.js";
 import { InMemoryWalletRepository } from "../../../../src/economy/adapters/inMemoryWalletRepository.js";
@@ -11,6 +12,7 @@ function makeDeps() {
     userRepository: new InMemoryUserRepository(),
     cardRepository: new InMemoryCardRepository(),
     walletRepository: new InMemoryWalletRepository(),
+    achievementRepository: new InMemoryAchievementRepository(),
   };
 }
 
@@ -86,6 +88,17 @@ describe("openPack", () => {
     const user = await deps.userRepository.ensureUserForDiscordId("discord-1");
     const owned = await deps.cardRepository.listUserCards(user.id);
     expect(owned).toHaveLength(6);
+  });
+
+  it("unlocks FIRST_PACK on the first pack opened, and never again", async () => {
+    const deps = makeDeps();
+    await grantCoins(deps, "discord-1", 1000n);
+
+    const first = await openPack(deps, { discordId: "discord-1", packId: "pack-bronze", requestId: "req-a" });
+    expect(first.achievementsUnlocked).toContain("FIRST_PACK");
+
+    const second = await openPack(deps, { discordId: "discord-1", packId: "pack-bronze", requestId: "req-b" });
+    expect(second.achievementsUnlocked).not.toContain("FIRST_PACK");
   });
 
   it("pack-ouro's SPECIAL roll always yields the pinned card when it happens to hit", async () => {
