@@ -21,17 +21,29 @@ export interface PublishRecordNewsInput {
   now: Date;
 }
 
+export interface PublishedRecordArticle {
+  headline: string;
+  body: string;
+}
+
 /**
  * Turns a broken world record into a published News article. Meant to run
  * as the RECORD_BROKEN event handler (see src/index.ts) — never awaited by
  * the match/duel flow that emitted the event, so an LLM hiccup here can
  * never delay or fail gameplay (see ADR 0001, adenda Fase 10).
+ *
+ * Returns the published headline/body (or null when skipped) so the caller
+ * can also relay the same article elsewhere — e.g. notifyGuildEvent posting
+ * it to configured Discord channels — without generating it twice.
  */
-export async function publishRecordNews(deps: PublishRecordNewsDeps, input: PublishRecordNewsInput): Promise<void> {
+export async function publishRecordNews(
+  deps: PublishRecordNewsDeps,
+  input: PublishRecordNewsInput,
+): Promise<PublishedRecordArticle | null> {
   const holder = await deps.playerRepository.findById(input.playerId);
   if (!holder) {
     deps.logger.warn({ playerId: input.playerId }, "publishRecordNews: holder player not found, skipping");
-    return;
+    return null;
   }
   const previousHolder = input.previousHolderId ? await deps.playerRepository.findById(input.previousHolderId) : null;
 
@@ -52,4 +64,6 @@ export async function publishRecordNews(deps: PublishRecordNewsDeps, input: Publ
     generatedByAi: article.generatedByAi,
     publishedAt: input.now,
   });
+
+  return { headline: article.headline, body: article.body };
 }

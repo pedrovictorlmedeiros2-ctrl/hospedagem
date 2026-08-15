@@ -57,6 +57,7 @@ decisões de arquitetura.
 | `/carta nome:...` | Mostra a visão detalhada de uma carta do catálogo (atributos, habilidade, cópias possuídas) |
 | `/favoritar nome:...` | Favorita ou desfavorita uma carta da sua coleção |
 | `/conquistas` | Mostra seu progresso de conquistas (desbloqueadas e bloqueadas) |
+| `/canal-eventos` | (admin do servidor) Define o canal atual para receber notificações de eventos do jogo, ex: recordes mundiais quebrados |
 
 ## Stack
 

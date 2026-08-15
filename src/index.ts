@@ -8,8 +8,11 @@ import { PrismaCompetitionRepository } from "./competitions/adapters/prismaCompe
 import { loadEnv } from "./config/env.js";
 import { getPrismaClient, disconnectPrisma } from "./database/prisma.js";
 import { createDiscordClient } from "./discord/client.js";
+import { createGuildEventPoster } from "./discord/guildEventPoster.js";
 import { PrismaMarketRepository } from "./economy/adapters/prismaMarketRepository.js";
 import { PrismaWalletRepository } from "./economy/adapters/prismaWalletRepository.js";
+import { PrismaGuildEventChannelRepository } from "./events/adapters/prismaGuildEventChannelRepository.js";
+import { notifyGuildEvent } from "./events/services/notifyGuildEvent.js";
 import { PrismaMatchRepository } from "./game/adapters/prismaMatchRepository.js";
 import { PrismaRecordRepository } from "./global/adapters/prismaRecordRepository.js";
 import { PrismaRivalryRepository } from "./global/adapters/prismaRivalryRepository.js";
@@ -56,6 +59,7 @@ async function main() {
   const rivalryRepository = new PrismaRivalryRepository(prisma);
   const newsRepository = new PrismaNewsRepository(prisma);
   const achievementRepository = new PrismaAchievementRepository(prisma);
+  const guildEventChannelRepository = new PrismaGuildEventChannelRepository(prisma);
 
   // Groq is purely the narrative layer's primary text source — never in
   // the gameplay-critical path (see ADR 0001, adenda Fase 10). Without a
@@ -69,24 +73,6 @@ async function main() {
       )
     : templateNarrativeGenerator;
 
-  // Fire-and-forget subscriber: turns a broken world record into a
-  // published News article without ever blocking the match/duel flow that
-  // emitted the event (EventBus never awaits handlers — see
-  // shared/eventBus.ts).
-  events.on("RECORD_BROKEN", async (payload) => {
-    await publishRecordNews(
-      { narrativeGenerator, newsRepository, playerRepository, logger },
-      {
-        category: payload.category as RecordCategory,
-        playerId: payload.playerId,
-        previousHolderId: payload.previousHolderId,
-        previousValue: payload.previousValue,
-        value: payload.value,
-        now: new Date(),
-      },
-    );
-  });
-
   const client = createDiscordClient({
     prisma,
     logger,
@@ -99,6 +85,7 @@ async function main() {
     matchRepository,
     walletRepository,
     marketRepository,
+    guildEventChannelRepository,
     cardRepository,
     duelRepository,
     recordRepository,
@@ -106,6 +93,37 @@ async function main() {
     narrativeGenerator,
     newsRepository,
     achievementRepository,
+  });
+
+  // Needs `client` to actually deliver to a Discord channel, hence
+  // created only after createDiscordClient — see
+  // discord/guildEventPoster.ts for why this is the only place that
+  // touches discord.js in this whole notification feature.
+  const postToChannel = createGuildEventPoster(client);
+
+  // Fire-and-forget subscriber: turns a broken world record into a
+  // published News article, then relays the same headline/body to every
+  // guild's configured events channel (see /canal-eventos). Neither step
+  // ever blocks the match/duel flow that emitted the event (EventBus never
+  // awaits handlers — see shared/eventBus.ts).
+  events.on("RECORD_BROKEN", async (payload) => {
+    const article = await publishRecordNews(
+      { narrativeGenerator, newsRepository, playerRepository, logger },
+      {
+        category: payload.category as RecordCategory,
+        playerId: payload.playerId,
+        previousHolderId: payload.previousHolderId,
+        previousValue: payload.previousValue,
+        value: payload.value,
+        now: new Date(),
+      },
+    );
+    if (article) {
+      await notifyGuildEvent(
+        { guildEventChannelRepository, postToChannel, logger },
+        { title: article.headline, body: article.body },
+      );
+    }
   });
 
   let shuttingDown = false;

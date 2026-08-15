@@ -45,7 +45,7 @@ describe("publishRecordNews", () => {
     const player = await deps.playerRepository.findByUserId(user.id);
     if (!player) throw new Error("test setup failed: no player");
 
-    await publishRecordNews(deps, {
+    const article = await publishRecordNews(deps, {
       category: "HIGHEST_GLOBAL_RATING",
       playerId: player.id,
       previousHolderId: null,
@@ -58,6 +58,7 @@ describe("publishRecordNews", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.headline).toContain("Pedrinho");
     expect(rows[0]?.generatedByAi).toBe(false);
+    expect(article).toEqual({ headline: rows[0]?.headline, body: rows[0]?.body });
   });
 
   it("resolves and mentions the previous holder's nickname when there was one", async () => {
@@ -86,7 +87,7 @@ describe("publishRecordNews", () => {
   it("skips publishing (without throwing) when the holder player can't be resolved", async () => {
     const deps = makeDeps();
 
-    await publishRecordNews(deps, {
+    const article = await publishRecordNews(deps, {
       category: "HIGHEST_GLOBAL_RATING",
       playerId: "ghost-player-id",
       previousHolderId: null,
@@ -97,5 +98,6 @@ describe("publishRecordNews", () => {
 
     const rows = await deps.newsRepository.listRecent(10);
     expect(rows).toHaveLength(0);
+    expect(article).toBeNull();
   });
 });

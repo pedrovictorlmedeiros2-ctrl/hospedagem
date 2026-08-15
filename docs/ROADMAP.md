@@ -1181,3 +1181,75 @@ agora estendida ao nome da própria liga.
 - Nenhum teste depende da string antiga — os 383 testes passaram sem
   alteração. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` e
   `npm run build` — todos limpos.
+
+## Eventos de futebol (follow-up, parte 2/3): notificações ao vivo num canal
+
+Objetivo: um admin do servidor Discord escolhe um canal com
+`/canal-eventos`, e a partir daí eventos globais do jogo (hoje: recorde
+mundial quebrado) são publicados ali automaticamente, além de virarem
+notícia em `/noticias` como já acontecia.
+
+- **`GuildEventChannel`** (`prisma/schema.prisma` + migração hand-edited
+  no init único, seguindo a convenção do projeto) é o primeiro modelo
+  da aplicação escopado por `guildId` em vez de usuário — documentado
+  no próprio schema como decisão deliberada (todo o resto é
+  pessoal/global). Uma `armadilha de sintaxe Prisma` apareceu aqui: o
+  schema NÃO suporta comentário de bloco `/** ... */` (só `//`/`///`
+  linha a linha) — `prisma generate` falhava com "This line is invalid"
+  apontando pro meio do comentário; corrigido trocando pra `//` antes
+  de gerar o client.
+- **`events/ports/guildEventChannelRepository.ts`** (`setChannel`
+  upsert, `getChannel`, `listAll`) com adapters Prisma e in-memory —
+  mesmo padrão hexagonal de todo repositório já existente no projeto.
+- **`events/services/setGuildEventsChannel.ts`** — mutação fina que só
+  delega ao repositório; existe como serviço (não uma chamada direta
+  do comando) pra seguir a mesma convenção de teste/typecheck de toda
+  outra mutação do projeto.
+- **`events/services/notifyGuildEvent.ts`** — o serviço central: lê
+  `listAll()` e chama um `postToChannel` injetado (`ChannelPoster`)
+  pra cada guild configurada, isolando falha por canal (`try/catch`
+  individual — um canal deletado ou sem permissão nunca impede a
+  entrega nos outros). Deliberadamente livre de `discord.js`, como
+  todo serviço do projeto — a implementação real
+  (`client.channels.fetch` + `.send`) mora só em
+  `discord/guildEventPoster.ts`, o único arquivo desta feature que
+  toca a API do Discord diretamente.
+- **`publishRecordNews`** ganhou um valor de retorno
+  (`{ headline, body } | null`, antes `void`) — o artigo já gerado é
+  reaproveitado pra notificação de canal em vez de gerar a narrativa
+  duas vezes. Testes existentes ajustados só pra também checar o
+  retorno, nenhuma mudança de comportamento.
+- **`src/index.ts` reordenado**: `createDiscordClient` agora roda
+  ANTES do handler `events.on("RECORD_BROKEN", ...)`, porque esse
+  handler precisa de `client` (via `createGuildEventPoster(client)`)
+  pra poder postar numa mensagem real — antes o handler era registrado
+  sem nenhuma referência ao client, o que teria sido impossível de
+  estender pra esta feature sem essa inversão de ordem.
+- **`/canal-eventos`** — novo slash command,
+  `setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)` (o
+  próprio Discord já esconde/bloqueia o comando pra quem não tem
+  permissão de gerenciar servidor, sem precisar reimplementar essa
+  checagem em código); recusa rodar fora de um servidor
+  (`interaction.inGuild()`) e grava o canal ATUAL como canal de
+  eventos daquele `guildId`.
+
+**O que foi validado de verdade:** `npx tsc --noEmit`, `npx eslint .`,
+`npx vitest run` (388 passando, incluindo os testes novos de
+`notifyGuildEvent` e `setGuildEventsChannel`) e `npm run build` — todos
+limpos. Nenhum teste de integração real contra Postgres (mesma
+limitação de sempre neste ambiente — ver `PrismaGuildEventChannelRepository`,
+implementado e tipado mas nunca rodado contra um banco de verdade).
+
+**Passos manuais necessários** (o usuário precisa rodar isso pra essa
+parte funcionar de verdade): `npx prisma generate` (client novo já
+tem o model), `npx prisma migrate dev` se quiser aplicar a tabela nova
+no Neon real, e `npm run deploy-commands` pra registrar `/canal-eventos`
+no Discord.
+
+**O que fica pra depois:** mais de um canal por guild (ex.: canal
+separado por tipo de evento), um comando pra REMOVER a configuração
+(hoje só dá pra trocar de canal, não desligar), e estender
+`notifyGuildEvent` pra outros tipos de evento além de `RECORD_BROKEN`
+(rivalidade decidida, temporada nova, etc. — a infraestrutura já
+suporta, só falta decidir quais eventos valem a pena virar notificação
+de canal em vez de só notícia).

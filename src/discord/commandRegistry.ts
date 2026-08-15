@@ -1,5 +1,6 @@
 import { Collection } from "discord.js";
 import { abrirPacoteCommand } from "./commands/abrirPacote.js";
+import { canalEventosCommand } from "./commands/canalEventos.js";
 import { carreiraCommand } from "./commands/carreira.js";
 import { cartaCommand } from "./commands/carta.js";
 import { carteiraCommand } from "./commands/carteira.js";
@@ -67,6 +68,7 @@ export function buildCommandRegistry(): Collection<string, Command> {
     treinadorCommand,
     entrevistaCommand,
     conquistasCommand,
+    canalEventosCommand,
   ]) {
     commands.set(command.data.name, command);
   }

@@ -784,6 +784,23 @@ model News {
   @@index([publishedAt])
 }
 
+// ---------- Discord guild configuration ----------
+
+// Per-Discord-server config — currently just where global event
+// notifications (a broken world record, see events/services/notifyGuildEvent.ts)
+// get posted. One row per guild; deliberately NOT tied to any User —
+// every other model in this schema is scoped by Discord user, never by
+// guild, since a career/wallet/etc. is personal and global, not
+// server-specific. This is the first (and so far only) guild-scoped
+// concept in the whole app.
+model GuildEventChannel {
+  id        String   @id @default(cuid())
+  guildId   String   @unique
+  channelId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ---------- Notifications & audit ----------
 
 model Notification {

@@ -513,6 +513,17 @@ CREATE TABLE "UserAchievement" (
 );
 
 -- CreateTable
+CREATE TABLE "GuildEventChannel" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "channelId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "GuildEventChannel_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "News" (
     "id" TEXT NOT NULL,
     "headline" TEXT NOT NULL,
@@ -549,6 +560,9 @@ CREATE TABLE "AuditLog" (
 
     CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "GuildEventChannel_guildId_key" ON "GuildEventChannel"("guildId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_discordId_key" ON "User"("discordId");
