@@ -1,3 +1,4 @@
+import "dotenv/config";
 import Groq from "groq-sdk";
 import { PrismaAchievementRepository } from "./achievements/adapters/prismaAchievementRepository.js";
 import { PrismaCareerRepository } from "./career/adapters/prismaCareerRepository.js";

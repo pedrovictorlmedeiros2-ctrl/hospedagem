@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { REST, Routes } from "discord.js";
 import { loadEnv } from "../config/env.js";
 import { createLogger } from "../shared/logger.js";
