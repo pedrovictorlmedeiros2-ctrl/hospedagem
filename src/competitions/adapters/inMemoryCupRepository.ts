@@ -92,7 +92,13 @@ export class InMemoryCupRepository implements CupRepository {
     return null;
   }
 
-  async recordFixtureResult(tournamentId: string, matchId: string, homeScore: number, awayScore: number): Promise<void> {
+  async recordFixtureResult(
+    tournamentId: string,
+    matchId: string,
+    homeScore: number,
+    awayScore: number,
+    realTeamId?: string,
+  ): Promise<void> {
     const state = this.cups.get(tournamentId);
     if (!state) return;
 
@@ -106,51 +112,64 @@ export class InMemoryCupRepository implements CupRepository {
     target.homeScore = homeScore;
     target.awayScore = awayScore;
 
-    const stageMatches = state.matchesByStage.get(target.stage) ?? [];
+    let stage = target.stage;
     // Nobody plays the sibling fixtures between two synthetic clubs — see
     // simulateSyntheticCupMatch's doc comment. Resolving them right here
     // means the round always closes the instant the real player's own
     // match is recorded, instead of waiting on a coincidence.
-    for (const sibling of stageMatches) {
-      if (sibling.homeScore === null) {
-        const synthetic = simulateSyntheticCupMatch(sibling.matchId);
-        sibling.homeScore = synthetic.homeScore;
-        sibling.awayScore = synthetic.awayScore;
+    for (;;) {
+      const stageMatches = state.matchesByStage.get(stage) ?? [];
+      for (const sibling of stageMatches) {
+        if (sibling.homeScore === null) {
+          const synthetic = simulateSyntheticCupMatch(sibling.matchId);
+          sibling.homeScore = synthetic.homeScore;
+          sibling.awayScore = synthetic.awayScore;
+        }
       }
+
+      const stageIndex = state.stageTypes.indexOf(stage);
+      const nextStageType = state.stageTypes[stageIndex + 1];
+      if (!nextStageType) return; // that was the FINAL — bracket is complete, champion derived in getStatus
+
+      const winners = [...stageMatches]
+        .sort((a, b) => a.slotIndex - b.slotIndex)
+        .map((match) =>
+          resolveCupWinner({
+            matchId: match.matchId,
+            homeTeamId: match.homeTeamId,
+            awayTeamId: match.awayTeamId,
+            homeScore: match.homeScore ?? 0,
+            awayScore: match.awayScore ?? 0,
+          }),
+        );
+
+      const nextMatches: InternalCupMatch[] = [];
+      for (let i = 0; i < winners.length; i += 2) {
+        const home = winners[i];
+        const away = winners[i + 1];
+        if (home === undefined || away === undefined) continue;
+        nextMatches.push({
+          matchId: randomUUID(),
+          stage: nextStageType,
+          slotIndex: nextMatches.length,
+          homeTeamId: home,
+          awayTeamId: away,
+          homeScore: null,
+          awayScore: null,
+        });
+      }
+      state.matchesByStage.set(nextStageType, nextMatches);
+
+      // No caller is tracking a specific team (e.g. a direct test call),
+      // or that team is still alive to play the newly generated round for
+      // real — either way, stop here. Only keep cascading when the real
+      // player has already been eliminated: nobody will ever call this
+      // again for THIS tournament on their behalf, so the remaining
+      // rounds must resolve themselves now or the cup would simply never
+      // crown a champion.
+      if (!realTeamId || winners.includes(realTeamId)) return;
+      stage = nextStageType;
     }
-
-    const stageIndex = state.stageTypes.indexOf(target.stage);
-    const nextStageType = state.stageTypes[stageIndex + 1];
-    if (!nextStageType) return; // that was the FINAL — bracket is complete, champion derived in getStatus
-
-    const winners = [...stageMatches]
-      .sort((a, b) => a.slotIndex - b.slotIndex)
-      .map((match) =>
-        resolveCupWinner({
-          matchId: match.matchId,
-          homeTeamId: match.homeTeamId,
-          awayTeamId: match.awayTeamId,
-          homeScore: match.homeScore ?? 0,
-          awayScore: match.awayScore ?? 0,
-        }),
-      );
-
-    const nextMatches: InternalCupMatch[] = [];
-    for (let i = 0; i < winners.length; i += 2) {
-      const home = winners[i];
-      const away = winners[i + 1];
-      if (home === undefined || away === undefined) continue;
-      nextMatches.push({
-        matchId: randomUUID(),
-        stage: nextStageType,
-        slotIndex: nextMatches.length,
-        homeTeamId: home,
-        awayTeamId: away,
-        homeScore: null,
-        awayScore: null,
-      });
-    }
-    state.matchesByStage.set(nextStageType, nextMatches);
   }
 
   async getStatus(tournamentId: string): Promise<CupStatusRecord> {
@@ -200,5 +219,12 @@ export class InMemoryCupRepository implements CupRepository {
         : null;
 
     return { tournamentId, stages, championTeamName };
+  }
+
+  async getChampionForSeason(competitionName: string, seasonId: string): Promise<string | null> {
+    const tournamentId = this.tournamentIdByCupAndSeason.get(`${competitionName}:${seasonId}`);
+    if (!tournamentId) return null;
+    const status = await this.getStatus(tournamentId);
+    return status.championTeamName;
   }
 }

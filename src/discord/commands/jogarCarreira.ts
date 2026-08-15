@@ -9,11 +9,19 @@ import type { Command, CommandContext } from "./types.js";
 /** No response in 5 minutes defaults to BALANCED (see buildMatchTacticCard's footer note) rather than leaving the match stuck mid-simulation forever. */
 const TACTIC_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** One factory shared by both pause points (halftime, late-game) — only the card's heading/prompt text differs between them. */
+/**
+ * One factory shared by both pause points (halftime, late-game) — only the
+ * card's heading/prompt text differs between them. `timedOutMinutes` is a
+ * shared, mutated-in-place array the caller also passes to the result
+ * card, so a silent timeout (no message of its own — see
+ * buildMatchTacticCard's footer note) still shows up as a note on the
+ * final result instead of vanishing without a trace.
+ */
 function makeResolveMatchTactic(
   interaction: RepliableInteraction,
   logger: CommandContext["logger"],
   copy: MatchTacticCardCopy,
+  timedOutMinutes: number[],
 ): ResolveMatchTactic {
   return async (context: MatchTacticContext): Promise<MatchTacticChoice> => {
     const card = buildMatchTacticCard(context, copy);
@@ -33,6 +41,7 @@ function makeResolveMatchTactic(
       return buttonInteraction.customId.slice(MATCH_TACTIC_BUTTON_PREFIX.length) as MatchTacticChoice;
     } catch {
       logger.info({ discordId: interaction.user.id, minute: context.minute }, "match tactic decision timed out, defaulting to BALANCED");
+      timedOutMinutes.push(context.minute);
       return "BALANCED";
     }
   };
@@ -42,6 +51,7 @@ function makeResolveMatchTactic(
 export async function renderJogarCarreira(interaction: RepliableInteraction, ctx: CommandContext): Promise<void> {
   await interaction.deferReply();
 
+  const timedOutMinutes: number[] = [];
   const match = await playCareerMatch(
     {
       userRepository: ctx.userRepository,
@@ -54,19 +64,23 @@ export async function renderJogarCarreira(interaction: RepliableInteraction, ctx
       recordRepository: ctx.recordRepository,
       achievementRepository: ctx.achievementRepository,
       events: ctx.events,
-      resolveHalftimeTactic: makeResolveMatchTactic(interaction, ctx.logger, {
-        title: "⏸️ Intervalo",
-        prompt: "Fim do primeiro tempo. Escolha a postura do seu time para os 45 minutos finais:",
-      }),
-      resolveLateGameTactic: makeResolveMatchTactic(interaction, ctx.logger, {
-        title: "⏱️ Reta final",
-        prompt: "Faltam 20 minutos. Confirma a postura ou muda de ideia para o resto do jogo:",
-      }),
+      resolveHalftimeTactic: makeResolveMatchTactic(
+        interaction,
+        ctx.logger,
+        { title: "⏸️ Intervalo", prompt: "Fim do primeiro tempo. Escolha a postura do seu time para os 45 minutos finais:" },
+        timedOutMinutes,
+      ),
+      resolveLateGameTactic: makeResolveMatchTactic(
+        interaction,
+        ctx.logger,
+        { title: "⏱️ Reta final", prompt: "Faltam 20 minutos. Confirma a postura ou muda de ideia para o resto do jogo:" },
+        timedOutMinutes,
+      ),
     },
     { discordId: interaction.user.id },
   );
 
-  const card = buildCareerMatchResultCard(match);
+  const card = buildCareerMatchResultCard(match, { timedOutMinutes });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 
   ctx.logger.info(

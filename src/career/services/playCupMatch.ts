@@ -55,6 +55,7 @@ export interface PlayCupMatchOutput {
   coinsEarned?: number;
   outcome?: "WIN" | "LOSS" | undefined;
   championTeamName?: string | null;
+  seasonNumber: number;
 }
 
 /**
@@ -75,7 +76,7 @@ export async function playCupMatch(deps: PlayCupMatchDeps, input: PlayCupMatchIn
 
   if (!fixture) {
     const status = await deps.cupRepository.getStatus(tournamentId);
-    return { played: false, status, cupName, championTeamName: status.championTeamName };
+    return { played: false, status, cupName, championTeamName: status.championTeamName, seasonNumber: season.number };
   }
 
   const isPlayerHome = fixture.homeTeamId === team.id;
@@ -126,7 +127,12 @@ export async function playCupMatch(deps: PlayCupMatchDeps, input: PlayCupMatchIn
     existingMatchId: fixture.matchId,
   });
 
-  await deps.cupRepository.recordFixtureResult(tournamentId, fixture.matchId, result.homeScore, result.awayScore);
+  // team.id as realTeamId: once the player's own participation ends here
+  // (elimination), nobody will ever call this again for this tournament
+  // on their behalf — see CupRepository.recordFixtureResult's doc
+  // comment — so the remaining rounds resolve themselves right now
+  // instead of leaving the cup stuck without a champion forever.
+  await deps.cupRepository.recordFixtureResult(tournamentId, fixture.matchId, result.homeScore, result.awayScore, team.id);
 
   let coinsEarned = 0;
   let outcome: "WIN" | "LOSS" | undefined;
@@ -171,5 +177,6 @@ export async function playCupMatch(deps: PlayCupMatchDeps, input: PlayCupMatchIn
     coinsEarned,
     outcome,
     championTeamName: status.championTeamName,
+    seasonNumber: season.number,
   };
 }

@@ -67,6 +67,35 @@ describe("InMemoryCupRepository", () => {
     expect(await repo.getNextFixtureForTeam(tournamentId, "team-1")).toBeNull();
   });
 
+  it("cascades all the way to a champion when realTeamId is eliminated — nobody else would ever push the bracket forward", async () => {
+    const { tournamentId } = await makeTournament(repo);
+    const fixture = await repo.getNextFixtureForTeam(tournamentId, "team-1");
+    if (!fixture) throw new Error("expected a QF fixture");
+    const homeWins = fixture.homeTeamId === "team-1";
+
+    // team-1 LOSES its own match — pass realTeamId so the repo knows
+    // nobody will ever call this again on team-1's behalf.
+    await repo.recordFixtureResult(tournamentId, fixture.matchId, homeWins ? 0 : 3, homeWins ? 3 : 0, "team-1");
+
+    const status = await repo.getStatus(tournamentId);
+    expect(status.championTeamName).toBeTruthy();
+    expect(status.stages.filter((s) => s.stage === "FINAL")).toHaveLength(1);
+    expect(status.stages.every((s) => s.homeScore !== null)).toBe(true);
+  });
+
+  it("does NOT cascade past one round when realTeamId is omitted, even if that team just lost", async () => {
+    const { tournamentId } = await makeTournament(repo);
+    const fixture = await repo.getNextFixtureForTeam(tournamentId, "team-1");
+    if (!fixture) throw new Error("expected a QF fixture");
+    const homeWins = fixture.homeTeamId === "team-1";
+
+    await repo.recordFixtureResult(tournamentId, fixture.matchId, homeWins ? 0 : 3, homeWins ? 3 : 0);
+
+    const status = await repo.getStatus(tournamentId);
+    expect(status.championTeamName).toBeNull();
+    expect(status.stages.filter((s) => s.stage === "SEMI_FINAL")).toHaveLength(2);
+  });
+
   it("resolves a draw deterministically instead of leaving the round undecided", async () => {
     const { tournamentId } = await makeTournament(repo);
     const fixture = await repo.getNextFixtureForTeam(tournamentId, "team-1");

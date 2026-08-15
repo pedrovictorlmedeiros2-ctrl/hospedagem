@@ -126,61 +126,75 @@ export class PrismaCupRepository implements CupRepository {
    * here, the instant the real player's own match comes in, instead of
    * waiting on a coincidence that may never happen. Only then does the
    * next stage's fixtures get generated from the winners.
+   *
+   * `realTeamId`: see the port's doc comment — when given and eliminated
+   * by this round's result, resolution keeps cascading through every
+   * remaining round in this same call instead of stopping after one.
    */
-  async recordFixtureResult(tournamentId: string, matchId: string, _homeScore: number, _awayScore: number): Promise<void> {
+  async recordFixtureResult(
+    tournamentId: string,
+    matchId: string,
+    _homeScore: number,
+    _awayScore: number,
+    realTeamId?: string,
+  ): Promise<void> {
     const match = await this.prisma.match.findUnique({ where: { id: matchId }, include: { stage: true } });
     if (!match || !match.stageId || !match.stage) return;
 
-    let stageMatches = await this.prisma.match.findMany({
-      where: { stageId: match.stageId },
-      orderBy: { scheduledAt: "asc" },
-    });
+    const stages = await this.prisma.tournamentStage.findMany({ where: { tournamentId }, orderBy: { order: "asc" } });
+    let stageId = match.stageId;
 
-    const pendingSiblings = stageMatches.filter((row) => row.status !== "FINISHED");
-    if (pendingSiblings.length > 0) {
-      await Promise.all(
-        pendingSiblings.map((row) => {
-          const synthetic = simulateSyntheticCupMatch(row.id);
-          return this.prisma.match.update({
-            where: { id: row.id },
-            data: { homeScore: synthetic.homeScore, awayScore: synthetic.awayScore, status: "FINISHED", finishedAt: new Date() },
-          });
+    for (;;) {
+      let stageMatches = await this.prisma.match.findMany({ where: { stageId }, orderBy: { scheduledAt: "asc" } });
+
+      const pendingSiblings = stageMatches.filter((row) => row.status !== "FINISHED");
+      if (pendingSiblings.length > 0) {
+        await Promise.all(
+          pendingSiblings.map((row) => {
+            const synthetic = simulateSyntheticCupMatch(row.id);
+            return this.prisma.match.update({
+              where: { id: row.id },
+              data: { homeScore: synthetic.homeScore, awayScore: synthetic.awayScore, status: "FINISHED", finishedAt: new Date() },
+            });
+          }),
+        );
+        stageMatches = await this.prisma.match.findMany({ where: { stageId }, orderBy: { scheduledAt: "asc" } });
+      }
+
+      const currentStageIndex = stages.findIndex((stage) => stage.id === stageId);
+      const nextStage = stages[currentStageIndex + 1];
+      if (!nextStage) return; // that was the FINAL — bracket is complete, champion derived in getStatus
+
+      const winners = stageMatches.map((row) =>
+        resolveCupWinner({
+          matchId: row.id,
+          homeTeamId: row.homeTeamId,
+          awayTeamId: row.awayTeamId,
+          homeScore: row.homeScore,
+          awayScore: row.awayScore,
         }),
       );
-      stageMatches = await this.prisma.match.findMany({ where: { stageId: match.stageId }, orderBy: { scheduledAt: "asc" } });
+
+      const now = Date.now();
+      const nextMatches = [];
+      for (let i = 0; i < winners.length; i += 2) {
+        const home = winners[i];
+        const away = winners[i + 1];
+        if (home === undefined || away === undefined) continue;
+        nextMatches.push({
+          tournamentId,
+          stageId: nextStage.id,
+          homeTeamId: home,
+          awayTeamId: away,
+          status: "SCHEDULED" as const,
+          scheduledAt: new Date(now + nextMatches.length * SLOT_SPACING_MS),
+        });
+      }
+      await this.prisma.match.createMany({ data: nextMatches });
+
+      if (!realTeamId || winners.includes(realTeamId)) return;
+      stageId = nextStage.id;
     }
-
-    const stages = await this.prisma.tournamentStage.findMany({ where: { tournamentId }, orderBy: { order: "asc" } });
-    const currentStageIndex = stages.findIndex((stage) => stage.id === match.stageId);
-    const nextStage = stages[currentStageIndex + 1];
-    if (!nextStage) return; // that was the FINAL — bracket is complete, champion derived in getStatus
-
-    const winners = stageMatches.map((row) =>
-      resolveCupWinner({
-        matchId: row.id,
-        homeTeamId: row.homeTeamId,
-        awayTeamId: row.awayTeamId,
-        homeScore: row.homeScore,
-        awayScore: row.awayScore,
-      }),
-    );
-
-    const now = Date.now();
-    const nextMatches = [];
-    for (let i = 0; i < winners.length; i += 2) {
-      const home = winners[i];
-      const away = winners[i + 1];
-      if (home === undefined || away === undefined) continue;
-      nextMatches.push({
-        tournamentId,
-        stageId: nextStage.id,
-        homeTeamId: home,
-        awayTeamId: away,
-        status: "SCHEDULED" as const,
-        scheduledAt: new Date(now + nextMatches.length * SLOT_SPACING_MS),
-      });
-    }
-    await this.prisma.match.createMany({ data: nextMatches });
   }
 
   async getStatus(tournamentId: string): Promise<CupStatusRecord> {
@@ -219,5 +233,16 @@ export class PrismaCupRepository implements CupRepository {
       : null;
 
     return { tournamentId, stages: rows, championTeamName };
+  }
+
+  async getChampionForSeason(competitionName: string, seasonId: string): Promise<string | null> {
+    const competition = await this.prisma.competition.findUnique({ where: { name: competitionName } });
+    if (!competition) return null;
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { competitionId_seasonId: { competitionId: competition.id, seasonId } },
+    });
+    if (!tournament) return null;
+    const status = await this.getStatus(tournament.id);
+    return status.championTeamName;
   }
 }

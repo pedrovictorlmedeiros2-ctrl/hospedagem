@@ -1365,3 +1365,71 @@ testes agora só registram a partida do time real e verificam que a
 próxima fase já está disponível na hora. `npx tsc --noEmit`,
 `npx eslint .`, `npx vitest run` (401 passando) e `npm run build` —
 todos limpos.
+
+## Polimento: botão "voltar ao menu", histórico de campeões da copa, aviso de timeout
+
+Pedido do usuário depois de testar tudo: "sugestão de sistemas etc" →
+escolhida a opção de baixo risco (polimento de pontas soltas já
+documentadas no roadmap) em vez de um sistema novo maior.
+
+- **Botão "🏠 Menu"** — novo em `careerMatchResultCard.ts` e
+  `cupCard.ts`, ao lado dos atalhos que já existiam. Reabre o painel
+  `/menu` sem precisar digitar o comando de novo, fechando o ciclo de
+  navegação que tinha ficado pendente desde o follow-up "Menu de
+  botões".
+- **Ciclo de import evitado de propósito (de novo)**: adicionar a
+  chave `"menu"` em `MENU_ACTION_DEFINITIONS` (`menuActions.ts`) criaria
+  um ciclo real — `menuActions.ts` → `commands/menu.ts` (pro handler
+  `renderMenu`) → `ui/menuCard.ts` (que precisa da lista de ações pra
+  desenhar a grade) → `menuActions.ts` de novo. `tsc` não acusa nada
+  (é um ciclo de valor, não só de tipo), mas o loader ESM do Node pode
+  entregar um dos dois lados com o módulo ainda vazio na inicialização.
+  Resolvido extraindo `discord/menuActionMetadata.ts` — só
+  `key`/`emoji`/`label`, zero dependências, mesmo padrão de
+  `menuButtonId.ts` — que tanto `menuCard.ts` quanto `menuActions.ts`
+  importam; `menuActions.ts` monta a lista completa (metadata +
+  handler) num único `.map()`, com uma checagem que lança erro se
+  algum `key` da metadata não tiver handler registrado. Verificado com
+  um script throwaway importando `menuCard.ts`, `menuActions.ts` e as
+  duas UI cards juntas — `MENU_ACTION_DEFINITIONS` chega com as 10
+  entradas, nenhuma vazia.
+- **Histórico de campeões da copa** — `CupRepository.getChampionForSeason`
+  (novo, read-only — nunca cria uma copa que não existia, só espia)
+  mais o serviço `viewCupHistory.ts`, que percorre as temporadas 1..N
+  da carreira (idempotente: toda temporada abaixo da atual já existe,
+  `getOrCreateSeason` nessas é só leitura na prática) e monta a lista
+  de campeões passados. Renderizado em `/copa` como "📜 Campeões
+  anteriores", excluindo a temporada atual (que já aparece separada,
+  se decidida).
+- **Descoberta no meio do caminho — a copa raramente teria campeão**:
+  ao implementar o histórico, ficou claro que a correção anterior (auto-
+  resolver os jogos "de ninguém" da MESMA rodada) não bastava — depois
+  que o jogador real é eliminado, NINGUÉM MAIS chama `/copa` por aquele
+  time, então as rodadas seguintes nunca seriam geradas/resolvidas, e a
+  copa nunca chegaria a ter campeão na grande maioria das temporadas
+  (só quando o jogador vence tudo). Corrigido estendendo
+  `recordFixtureResult` com um parâmetro opcional `realTeamId`: quando
+  informado (só `playCupMatch.ts` passa, com `team.id`) e esse time NÃO
+  sobrevive à rodada recém-gerada, a resolução em cascata continua
+  automaticamente rodada após rodada até a Final — de uma vez, na mesma
+  chamada — em vez de parar depois de uma rodada só. Sem `realTeamId`
+  (todo teste que só quer verificar avanço passo a passo), o
+  comportamento continua idêntico a antes: resolve uma rodada, gera a
+  próxima, para. Dois testes novos no adapter cobrem os dois caminhos
+  lado a lado.
+- **Aviso de timeout tático** — `jogarCarreira.ts` agora coleta, num
+  array compartilhado por closure, os minutos (45/70) em que o jogador
+  não respondeu a tempo a uma decisão tática; `careerMatchResultCard.ts`
+  ganhou um parâmetro opcional `extra.timedOutMinutes` que vira uma
+  linha de rodapé ("⏱️ Sem resposta a tempo no intervalo — o time
+  seguiu Equilibrado"). Fecha o Risco #51 do jeito que ele já previa
+  como alternativa ("um aviso separado exigiria uma segunda
+  mensagem/edição") — sem mensagem extra, só uma nota no resultado
+  final que já ia ser enviado de qualquer jeito.
+
+**O que foi validado de verdade:** `npx tsc --noEmit`, `npx eslint .`,
+`npx vitest run` (405 passando, incluindo os testes novos de
+`viewCupHistory` e os dois de cascata em `inMemoryCupRepository`) e
+`npm run build` — todos limpos. Renderização das duas cards (resultado
+de carreira com aviso de timeout + botão de menu; copa com histórico)
+verificada com scripts throwaway (removidos depois).

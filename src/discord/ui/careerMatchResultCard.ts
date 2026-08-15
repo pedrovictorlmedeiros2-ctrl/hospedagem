@@ -24,7 +24,15 @@ function highlightLines(result: MatchResult): string[] {
     .filter((line): line is string => Boolean(line));
 }
 
-export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): ContainerBuilder {
+/** Which pause point a tactic-decision minute corresponds to, for the timeout footer note. */
+const DECISION_LABELS: Record<number, string> = { 45: "no intervalo", 70: "na reta final" };
+
+export interface CareerMatchResultCardExtra {
+  /** Regulation minutes (45, 70) where the player didn't click a tactic button in time — see jogarCarreira.ts's makeResolveMatchTactic. */
+  timedOutMinutes?: number[];
+}
+
+export function buildCareerMatchResultCard(match: PlayCareerMatchOutput, extra: CareerMatchResultCardExtra = {}): ContainerBuilder {
   const { result } = match;
 
   // The player's club isn't always the home side anymore — a real league
@@ -55,6 +63,10 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   }
 
   const footerLines: string[] = [];
+  for (const minute of extra.timedOutMinutes ?? []) {
+    const when = DECISION_LABELS[minute] ?? `aos ${minute}'`;
+    footerLines.push(`⏱️ Sem resposta a tempo ${when} — o time seguiu Equilibrado.`);
+  }
   if (match.seasonRolledOver) {
     footerLines.push(
       `🎊 Fim da temporada! Você avançou para a **Temporada ${match.seasonNumber}** — novo calendário de confrontos pela frente.`,
@@ -83,6 +95,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   const shortcuts = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(menuButtonCustomId("play")).setLabel("🔄 Jogar de novo").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(menuButtonCustomId("career")).setLabel("📋 Ver carreira").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(menuButtonCustomId("menu")).setLabel("🏠 Menu").setStyle(ButtonStyle.Secondary),
   );
   container.addActionRowComponents(shortcuts);
 

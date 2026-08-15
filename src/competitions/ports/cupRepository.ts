@@ -59,7 +59,23 @@ export interface CupRepository {
    * bracket complete if this was the FINAL). Draws are resolved by
    * resolveCupWinner (deterministic shootout) — a knockout round never
    * ends undecided.
+   *
+   * `realTeamId`, when given, is the caller's own team — if it does NOT
+   * survive into the newly generated round, resolution keeps cascading
+   * through every remaining round instead of stopping: nobody is left to
+   * ever call this again for that team in this tournament, so the cup
+   * must reach a champion right now or it never will. Omit it (as every
+   * caller that isn't tracking a specific team does) to only ever resolve
+   * one round per call, exactly as if every entrant might still play on.
    */
-  recordFixtureResult(tournamentId: string, matchId: string, homeScore: number, awayScore: number): Promise<void>;
+  recordFixtureResult(tournamentId: string, matchId: string, homeScore: number, awayScore: number, realTeamId?: string): Promise<void>;
   getStatus(tournamentId: string): Promise<CupStatusRecord>;
+  /**
+   * Read-only lookup for a past season's champion — null when that
+   * season's cup was never even started (no Tournament exists for the
+   * pair), NOT auto-created. Unlike getOrCreateSeasonCup, this must never
+   * spawn a fresh bracket for a season that's already over just because
+   * someone asked about its history.
+   */
+  getChampionForSeason(competitionName: string, seasonId: string): Promise<string | null>;
 }

@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
-import { MENU_ACTION_DEFINITIONS, menuButtonCustomId } from "../menuActions.js";
+import { MENU_ACTION_METADATA } from "../menuActionMetadata.js";
+import { menuButtonCustomId } from "../menuButtonId.js";
 
 const BUTTONS_PER_ROW = 4;
 
@@ -21,7 +22,8 @@ export function buildMenuCard(): ContainerBuilder {
       new TextDisplayBuilder().setContent("Clica num botão pra ir direto — sem precisar digitar o comando."),
     );
 
-  for (const row of chunk(MENU_ACTION_DEFINITIONS, BUTTONS_PER_ROW)) {
+  const panelActions = MENU_ACTION_METADATA.filter((action) => action.key !== "menu");
+  for (const row of chunk(panelActions, BUTTONS_PER_ROW)) {
     const buttons = row.map((action) =>
       new ButtonBuilder()
         .setCustomId(menuButtonCustomId(action.key))

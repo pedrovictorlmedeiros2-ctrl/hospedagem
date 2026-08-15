@@ -1,7 +1,9 @@
-import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import type { PlayCupMatchOutput } from "../../career/services/playCupMatch.js";
+import type { CupHistoryEntry } from "../../career/services/viewCupHistory.js";
 import { STAGE_TYPE_LABELS } from "../../competitions/domain/labels.js";
 import type { CupStatusRecord } from "../../competitions/ports/cupRepository.js";
-import type { PlayCupMatchOutput } from "../../career/services/playCupMatch.js";
+import { menuButtonCustomId } from "../menuButtonId.js";
 import { progressBar } from "./progressBar.js";
 
 function bracketLines(status: CupStatusRecord): string[] {
@@ -22,7 +24,7 @@ function bracketLines(status: CupStatusRecord): string[] {
   return lines;
 }
 
-export function buildCupCard(match: PlayCupMatchOutput): ContainerBuilder {
+export function buildCupCard(match: PlayCupMatchOutput, history: CupHistoryEntry[] = []): ContainerBuilder {
   const container = new ContainerBuilder()
     .setAccentColor(match.championTeamName ? 0xf1c40f : 0x9b59b6)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🏆 ${match.cupName}`));
@@ -66,6 +68,25 @@ export function buildCupCard(match: PlayCupMatchOutput): ContainerBuilder {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🏆 **Campeão: ${match.championTeamName}**`));
   }
+
+  // Excludes the current season — its champion (if already decided) was
+  // just shown above, no need to repeat it here.
+  const pastChampions = history.filter((entry) => entry.seasonNumber < match.seasonNumber);
+  if (pastChampions.length > 0) {
+    const lines = pastChampions
+      .slice()
+      .reverse()
+      .map((entry) => `Temporada ${entry.seasonNumber}: ${entry.championTeamName}`);
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**📜 Campeões anteriores**\n${lines.join("\n")}`));
+  }
+
+  const shortcuts = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(menuButtonCustomId("cup")).setLabel("🔄 Jogar de novo").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(menuButtonCustomId("menu")).setLabel("🏠 Menu").setStyle(ButtonStyle.Secondary),
+  );
+  container.addActionRowComponents(shortcuts);
 
   return container;
 }

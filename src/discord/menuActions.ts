@@ -7,8 +7,10 @@ import { renderConquistas } from "./commands/conquistas.js";
 import { renderCopa } from "./commands/copa.js";
 import { renderDuelos } from "./commands/duelos.js";
 import { renderJogarCarreira } from "./commands/jogarCarreira.js";
+import { renderMenu } from "./commands/menu.js";
 import { renderRanking } from "./commands/ranking.js";
 import type { CommandContext } from "./commands/types.js";
+import { MENU_ACTION_METADATA } from "./menuActionMetadata.js";
 
 export { MENU_BUTTON_PREFIX, menuButtonCustomId } from "./menuButtonId.js";
 
@@ -21,6 +23,20 @@ export interface MenuActionDefinition {
   handler: MenuActionHandler;
 }
 
+/** Every key in MENU_ACTION_METADATA must have exactly one handler here — see the build-time check right below this. */
+const HANDLERS: Record<string, MenuActionHandler> = {
+  menu: renderMenu,
+  career: renderCareira,
+  play: renderJogarCarreira,
+  cup: renderCopa,
+  standings: renderClassificacao,
+  wallet: renderCarteira,
+  collection: renderColecao,
+  duels: renderDuelos,
+  ranking: (interaction, ctx) => renderRanking(interaction, ctx),
+  achievements: renderConquistas,
+};
+
 /**
  * The subset of the bot's commands reachable from a button instead of
  * typing a slash command — deliberately only the parameterless ones
@@ -28,18 +44,24 @@ export interface MenuActionDefinition {
  * NOT here, e.g. /treinar needs a required "foco" option a button can't
  * supply). Shared by /menu (discord/commands/menu.ts) and any shortcut
  * button embedded in another card (e.g. careerCard.ts, careerMatchResultCard.ts).
+ *
+ * Built from MENU_ACTION_METADATA (key/emoji/label only) plus HANDLERS
+ * above, rather than declared as one literal list here — menuCard.ts
+ * needs the display metadata to build the /menu grid, but must NOT
+ * import this file to get it: this file imports every single command
+ * (that's the whole point), and commands/menu.ts imports menuCard.ts, so
+ * menuCard.ts importing back from here would be a real circular import
+ * (menuActions → commands/menu → ui/menuCard → menuActions), not just a
+ * type-level one — `tsc` stays quiet about it, but Node's ESM loader can
+ * hand one side of the cycle a still-empty module. See menuActionMetadata.ts.
  */
-export const MENU_ACTION_DEFINITIONS: MenuActionDefinition[] = [
-  { key: "career", emoji: "📋", label: "Carreira", handler: renderCareira },
-  { key: "play", emoji: "⚽", label: "Jogar partida", handler: renderJogarCarreira },
-  { key: "cup", emoji: "🏆", label: "Copa", handler: renderCopa },
-  { key: "standings", emoji: "📊", label: "Classificação", handler: renderClassificacao },
-  { key: "wallet", emoji: "🪙", label: "Carteira", handler: renderCarteira },
-  { key: "collection", emoji: "🗂️", label: "Coleção", handler: renderColecao },
-  { key: "duels", emoji: "⚔️", label: "Duelos", handler: renderDuelos },
-  { key: "ranking", emoji: "📊", label: "Ranking", handler: (interaction, ctx) => renderRanking(interaction, ctx) },
-  { key: "achievements", emoji: "🏅", label: "Conquistas", handler: renderConquistas },
-];
+export const MENU_ACTION_DEFINITIONS: MenuActionDefinition[] = MENU_ACTION_METADATA.map((meta) => {
+  const handler = HANDLERS[meta.key];
+  if (!handler) {
+    throw new Error(`Internal error: no handler registered in menuActions.ts for menu action "${meta.key}"`);
+  }
+  return { ...meta, handler };
+});
 
 export function buildMenuActionRegistry(): Collection<string, MenuActionDefinition> {
   const actions = new Collection<string, MenuActionDefinition>();
