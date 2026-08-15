@@ -5,9 +5,11 @@ function padRight(text: string, length: number): string {
   return text.length >= length ? text.slice(0, length) : text + " ".repeat(length - text.length);
 }
 
+const MEDALS = ["🥇", "🥈", "🥉"];
+
 export function buildStandingsCard(view: ViewStandingsOutput): ContainerBuilder {
   const rows = view.standings.map((row, index) => {
-    const position = `${index + 1}.`.padEnd(3);
+    const position = `${MEDALS[index] ?? `${index + 1}.`}`.padEnd(3);
     const marker = row.teamId === view.playerTeamId ? "➡️" : "  ";
     const name = padRight(row.teamName, 26);
     return `${marker}${position}${name} ${String(row.points).padStart(2)}pts (${row.played}J ${row.wins}V ${row.draws}E ${row.losses}D, SG ${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference})`;

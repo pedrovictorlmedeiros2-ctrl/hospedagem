@@ -1,6 +1,13 @@
 import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
-import { FOOT_LABELS, PLAYSTYLE_LABELS, POSITION_LABELS } from "../../player/domain/labels.js";
+import {
+  CORE_ATTRIBUTE_SHORT_LABELS,
+  FOOT_LABELS,
+  GOALKEEPER_ATTRIBUTE_SHORT_LABELS,
+  PLAYSTYLE_LABELS,
+  POSITION_LABELS,
+} from "../../player/domain/labels.js";
 import type { PlayerRecord } from "../../player/ports/playerRepository.js";
+import { progressBar } from "./progressBar.js";
 
 /** ISO 3166-1 alpha-2 → flag emoji via the standard regional-indicator codepoint offset (0x1F1E6 - 'A'.charCodeAt(0)). */
 function countryCodeToFlagEmoji(code: string): string {
@@ -12,6 +19,26 @@ function countryCodeToFlagEmoji(code: string): string {
 export interface ProfileCardOptions {
   title: string;
   accentColor: number;
+}
+
+/**
+ * FIFA-card-style attribute grid: one short label + bar per stat, laid
+ * out two columns wide in a fixed-width code block (```) so the bars
+ * actually line up — Discord's normal text has no monospace guarantee,
+ * but content inside a code fence does.
+ */
+function attributeGrid(player: PlayerRecord): string {
+  const entries: [string, number][] =
+    player.position === "GK"
+      ? (Object.entries(GOALKEEPER_ATTRIBUTE_SHORT_LABELS) as [keyof typeof GOALKEEPER_ATTRIBUTE_SHORT_LABELS, string][]).map(
+          ([field, short]) => [short, player[field] ?? 0],
+        )
+      : (Object.entries(CORE_ATTRIBUTE_SHORT_LABELS) as [keyof typeof CORE_ATTRIBUTE_SHORT_LABELS, string][]).map(
+          ([field, short]) => [short, player[field]],
+        );
+
+  const rows = entries.map(([label, value]) => `${label} ${progressBar(value, 99, 8)} ${String(value).padStart(2)}`);
+  return `\`\`\`\n${rows.join("\n")}\n\`\`\``;
 }
 
 export function buildProfileCard(
@@ -30,9 +57,13 @@ export function buildProfileCard(
 
   if (player.bio) lines.push(`_"${player.bio}"_`);
 
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(options.accentColor)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${options.title}`))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(attributeGrid(player)));
+
+  return container;
 }

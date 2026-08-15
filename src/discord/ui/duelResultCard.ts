@@ -2,6 +2,7 @@ import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.
 import type { DuelResolvedOutput } from "../../multiplayer/services/respondToDuel.js";
 import type { MatchResult, SimMatchEventType } from "../../game/domain/types.js";
 import { achievementUnlockLines } from "./achievementUnlockLines.js";
+import { progressBar } from "./progressBar.js";
 
 const HIGHLIGHT_TYPES: SimMatchEventType[] = ["GOAL", "PENALTY_SCORED", "PENALTY_MISSED", "RED_CARD"];
 const MAX_HIGHLIGHTS = 10;
@@ -29,7 +30,8 @@ export function buildDuelResultCard(
 
   const summaryLines = [
     `**${challengerName} ${result.homeScore} x ${result.awayScore} ${opponentName}**`,
-    winnerName ? `Vencedor: **${winnerName}**` : "Empate!",
+    `Posse — ${challengerName} ${progressBar(result.homePossessionPct, 100, 12)} ${result.homePossessionPct}% x ${100 - result.homePossessionPct}% ${opponentName}`,
+    winnerName ? `Vencedor: **${winnerName}** 🏆` : "Empate!",
     `${challengerName}: ${formatDelta(output.challengerRatingDelta)} rating • +${output.challengerReward} coins`,
     `${opponentName}: ${formatDelta(output.opponentRatingDelta)} rating • +${output.opponentReward} coins`,
     `Histórico: ${challengerName} ${output.rivalryChallengerWins} x ${output.rivalryOpponentWins} ${opponentName}`,
@@ -45,7 +47,7 @@ export function buildDuelResultCard(
   if (highlights.length > 0) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(highlights.join("\n")));
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎥 Melhores momentos**\n${highlights.join("\n")}`));
   }
 
   if (output.recordsBroken.length > 0) {

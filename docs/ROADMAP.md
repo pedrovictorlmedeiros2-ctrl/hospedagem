@@ -976,3 +976,44 @@ permanente em vitest (`playCareerMatch.test.ts`,
 reflete exatamente UMA operação bem-sucedida. `npx tsc --noEmit`, `npx
 eslint .`, `npx vitest run` (373 passando) e `npm run build` — todos
 limpos.
+
+## Polish visual (follow-up)
+
+Feedback direto de um usuário real testando o bot localmente pela
+primeira vez: "achei 100% comandos e não tem muitas coisas igual um
+FIFA". Levantamento das opções de melhoria (visual, profundidade de
+gameplay ao vivo, quantidade de conteúdo) e decisão consciente de
+começar pelo visual — menor risco, resultado visível imediato, sem
+mexer em arquitetura ou nos fluxos de jogo já testados.
+
+- **`discord/ui/progressBar.ts`** (novo) — helper compartilhado que
+  renderiza uma barra unicode fixa (`▰▰▰▰▰▰▰▱▱▱`) pra qualquer métrica
+  0..max. Discord não tem componente nativo de barra de progresso;
+  dentro de um bloco de código (` ``` `) o conteúdo é monoespaçado de
+  verdade, o que os TextDisplays normais não garantem.
+- **`/carreira` (perfil e carreira)**: cartão de perfil ganhou uma
+  grade de atributos estilo carta do FIFA — 3 letras + barra + valor
+  (RIT/FIN/PAS/DRI/MAR/FIS pra jogador de linha, REF/POS/SEG/AER/1v1/PEN
+  pro goleiro, ver `player/domain/labels.ts`). Cartão de carreira ganhou
+  barra de estamina e barra de progresso da temporada (partidas
+  jogadas/12, liga é sempre um returno duplo contra os 6 rivais).
+- **Cartões de resultado de partida** (`/jogar-carreira`,
+  `/simular-amistoso`, `/duelo-responder`): posse de bola virou barra
+  visual em vez de só dois números; seção de destaques ganhou um
+  cabeçalho "🎥 Melhores momentos" pra separar melhor do resumo. Os
+  ícones por tipo de evento (⚽🟨🟥🚑❌🚩) já existiam desde a Fase 3 no
+  motor (`game/engine/commentary.ts`) — não precisou de mudança ali.
+- **`/classificacao`**: top 3 do campeonato ganhou medalha (🥇🥈🥉) em
+  vez de só "1.", "2.", "3.".
+- Nenhuma mudança em domínio/serviço/porta — só nos builders de UI
+  (`discord/ui/*.ts`). Validado com um script throwaway renderizando
+  cada card (perfil de linha, perfil de goleiro, carreira, classificação)
+  e inspecionando o JSON gerado antes de apagar o script. `npx tsc
+  --noEmit`, `npx eslint .`, `npx vitest run` (373, nada quebrou) e `npm
+  run build` — todos limpos.
+- **O que fica pra depois, por decisão consciente**: quantidade de
+  conteúdo (mais clubes/cartas) e gameplay ao vivo (decisões de tática/
+  substituição durante a partida) — a segunda é uma mudança de
+  arquitetura bem maior (a partida hoje é simulada inteira de uma vez,
+  não pausa em pontos de decisão) e foi deliberadamente deixada fora
+  deste follow-up.

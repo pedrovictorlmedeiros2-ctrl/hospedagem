@@ -3,6 +3,7 @@ import { CAREER_STAGE_LABELS } from "../../career/domain/labels.js";
 import type { PlayCareerMatchOutput } from "../../career/services/playCareerMatch.js";
 import type { MatchResult, SimMatchEventType } from "../../game/domain/types.js";
 import { achievementUnlockLines } from "./achievementUnlockLines.js";
+import { progressBar } from "./progressBar.js";
 
 const HIGHLIGHT_TYPES: SimMatchEventType[] = [
   "GOAL",
@@ -34,7 +35,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
 
   const summaryLines = [
     `**${homeName} ${result.homeScore} x ${result.awayScore} ${awayName}**`,
-    `Posse de bola — você: ${playerPossessionPct}% • ${match.opponentName}: ${100 - playerPossessionPct}%`,
+    `Posse — você ${progressBar(playerPossessionPct, 100, 12)} ${playerPossessionPct}% x ${100 - playerPossessionPct}% ${match.opponentName}`,
     match.lineupStatus === "STARTING" ? "Você começou entre os titulares." : "Você começou no banco.",
     `🪙 +${match.coinsEarned} coins (recompensa) • +${match.salaryPaid} coins (salário)`,
   ];
@@ -49,7 +50,7 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
   if (highlights.length > 0) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(highlights.join("\n")));
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎥 Melhores momentos**\n${highlights.join("\n")}`));
   }
 
   const footerLines: string[] = [];

@@ -1,5 +1,6 @@
 import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 import type { MatchResult, MatchSquad, SimMatchEventType } from "../../game/domain/types.js";
+import { progressBar } from "./progressBar.js";
 
 const HIGHLIGHT_TYPES: SimMatchEventType[] = [
   "GOAL",
@@ -23,7 +24,7 @@ export function buildMatchResultCard(
 
   const summary = [
     `**${home.teamName} ${result.homeScore} x ${result.awayScore} ${away.teamName}**`,
-    `Posse de bola: ${result.homePossessionPct}% x ${100 - result.homePossessionPct}%`,
+    `Posse — ${home.teamName} ${progressBar(result.homePossessionPct, 100, 12)} ${result.homePossessionPct}% x ${100 - result.homePossessionPct}% ${away.teamName}`,
   ].join("\n");
 
   const container = new ContainerBuilder()
@@ -35,7 +36,7 @@ export function buildMatchResultCard(
   if (highlights.length > 0) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(highlights.join("\n")));
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎥 Melhores momentos**\n${highlights.join("\n")}`));
   }
 
   container

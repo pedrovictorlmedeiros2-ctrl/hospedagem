@@ -1,4 +1,5 @@
 import type { PlayStyle, Position, PreferredFoot } from "@prisma/client";
+import type { CoreAttributes, GoalkeeperAttributes } from "./attributes.js";
 
 export const POSITION_LABELS: Record<Position, string> = {
   GK: "Goleiro",
@@ -60,6 +61,25 @@ export const BACKGROUND_LABELS = {
   "night-city": "Cidade à noite",
   gradient: "Gradiente",
 } as const;
+
+/** 3-letter abbreviations, FIFA-card style — used by the compact attribute bars in profileCard. Order matches the canonical outfield attribute order used throughout the domain (see attributes.ts). */
+export const CORE_ATTRIBUTE_SHORT_LABELS: Record<keyof CoreAttributes, string> = {
+  pace: "RIT",
+  shooting: "FIN",
+  passing: "PAS",
+  dribbling: "DRI",
+  defending: "MAR",
+  physical: "FIS",
+};
+
+export const GOALKEEPER_ATTRIBUTE_SHORT_LABELS: Record<keyof GoalkeeperAttributes, string> = {
+  gkReflexes: "REF",
+  gkPositioning: "POS",
+  gkHandling: "SEG",
+  gkAerial: "AER",
+  gkOneOnOne: "1v1",
+  gkPenalties: "PEN",
+};
 
 export const THEME_CHOICES = Object.keys(THEME_LABELS) as (keyof typeof THEME_LABELS)[];
 export const CARD_STYLE_CHOICES = Object.keys(
