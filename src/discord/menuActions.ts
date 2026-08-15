@@ -4,6 +4,7 @@ import { renderCarteira } from "./commands/carteira.js";
 import { renderClassificacao } from "./commands/classificacao.js";
 import { renderColecao } from "./commands/colecao.js";
 import { renderConquistas } from "./commands/conquistas.js";
+import { renderCopa } from "./commands/copa.js";
 import { renderDuelos } from "./commands/duelos.js";
 import { renderJogarCarreira } from "./commands/jogarCarreira.js";
 import { renderRanking } from "./commands/ranking.js";
@@ -31,7 +32,8 @@ export interface MenuActionDefinition {
 export const MENU_ACTION_DEFINITIONS: MenuActionDefinition[] = [
   { key: "career", emoji: "📋", label: "Carreira", handler: renderCareira },
   { key: "play", emoji: "⚽", label: "Jogar partida", handler: renderJogarCarreira },
-  { key: "standings", emoji: "🏆", label: "Classificação", handler: renderClassificacao },
+  { key: "cup", emoji: "🏆", label: "Copa", handler: renderCopa },
+  { key: "standings", emoji: "📊", label: "Classificação", handler: renderClassificacao },
   { key: "wallet", emoji: "🪙", label: "Carteira", handler: renderCarteira },
   { key: "collection", emoji: "🗂️", label: "Coleção", handler: renderColecao },
   { key: "duels", emoji: "⚔️", label: "Duelos", handler: renderDuelos },

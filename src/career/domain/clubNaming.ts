@@ -63,3 +63,12 @@ export const RIVAL_CLUB_KEYS = [
 export function starterClubKeyFor(nationality: string): string {
   return `starter-club:${nationality}`;
 }
+
+/**
+ * One extra shared club, existing only to round the league's 7 teams (1
+ * starter + 6 rivals — see RIVAL_CLUB_KEYS) up to 8, the power of 2 a
+ * knockout bracket needs (see competitions/domain/knockoutBracket.ts).
+ * Never appears in the league table itself — see
+ * career/services/ensureLeagueTeams.ts's ensureCupWildcardTeam.
+ */
+export const CUP_WILDCARD_CLUB_KEY = "cup-wildcard-club";

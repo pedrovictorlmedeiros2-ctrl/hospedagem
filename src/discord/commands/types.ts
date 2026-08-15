@@ -5,6 +5,7 @@ import type { CareerRepository } from "../../career/ports/careerRepository.js";
 import type { TrainingRepository } from "../../career/ports/trainingRepository.js";
 import type { CardRepository } from "../../cards/ports/cardRepository.js";
 import type { CompetitionRepository } from "../../competitions/ports/competitionRepository.js";
+import type { CupRepository } from "../../competitions/ports/cupRepository.js";
 import type { MarketRepository } from "../../economy/ports/marketRepository.js";
 import type { WalletRepository } from "../../economy/ports/walletRepository.js";
 import type { GuildEventChannelRepository } from "../../events/ports/guildEventChannelRepository.js";
@@ -28,6 +29,7 @@ export interface CommandContext {
   careerRepository: CareerRepository;
   trainingRepository: TrainingRepository;
   competitionRepository: CompetitionRepository;
+  cupRepository: CupRepository;
   matchRepository: MatchRepository;
   walletRepository: WalletRepository;
   marketRepository: MarketRepository;

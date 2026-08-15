@@ -29,7 +29,7 @@ decisões de arquitetura.
 | Comando | O que faz |
 |---------|-----------|
 | `/ping` | Health check do bot + banco de dados |
-| `/menu` | Painel com botões pras ações mais usadas (carreira, jogar, classificação, carteira, coleção, duelos, ranking, conquistas) — evita ter que digitar cada comando |
+| `/menu` | Painel com botões pras ações mais usadas (carreira, jogar, copa, classificação, carteira, coleção, duelos, ranking, conquistas) — evita ter que digitar cada comando |
 | `/criar-perfil` | Cria o jogador (nome, apelido, nacionalidade, idade, posição, pé, altura, estilo, número) |
 | `/personalizar identidade` | Edita nome, apelido, número, frase e comemoração |
 | `/personalizar visual` | Edita cores, tema, estilo de carta, moldura e fundo (cosmético, sem efeito no gameplay) |
@@ -58,6 +58,7 @@ decisões de arquitetura.
 | `/favoritar nome:...` | Favorita ou desfavorita uma carta da sua coleção |
 | `/conquistas` | Mostra seu progresso de conquistas (desbloqueadas e bloqueadas) |
 | `/canal-eventos` | (admin do servidor) Define o canal atual para receber notificações de eventos do jogo, ex: recordes mundiais quebrados |
+| `/copa` | Joga a próxima partida da copa mata-mata (8 clubes, eliminação simples) ou mostra a chave atual — recompensa própria, maior quanto mais longe você avançar |
 
 ## Stack
 

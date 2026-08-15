@@ -1253,3 +1253,81 @@ separado por tipo de evento), um comando pra REMOVER a configuração
 (rivalidade decidida, temporada nova, etc. — a infraestrutura já
 suporta, só falta decidir quais eventos valem a pena virar notificação
 de canal em vez de só notícia).
+
+## Eventos de futebol (follow-up, parte 3/3): copa mata-mata paralela à liga
+
+Objetivo: uma segunda competição por temporada, além da liga — copa de
+eliminação simples (8 clubes: os mesmos 7 da liga — clube inicial + 6
+rivais — mais um 8º "coringa" só pra fechar a potência de 2), com
+recompensa própria e nomes igualmente fictícios (mesma decisão
+confirmada com o usuário na parte 1/3, reafirmada aqui: clima/formato
+real de copa mata-mata, nenhum nome de clube ou competição real).
+
+- **Descoberta feliz**: o schema já tinha TUDO desenhado pra isso desde
+  a Fase 0 e nunca usado — `CompetitionType.CUP` já existia no enum,
+  e `TournamentStage`/`Match.stageId` já existiam como tabelas vazias.
+  `generateKnockoutBracket` (domínio, Fase 5) também já existia, pura e
+  testada, mas nada a chamava. Resultado: **nenhuma migração de banco
+  nova** foi necessária pra esta feature — só código novo em cima do
+  schema existente.
+- **`competitions/domain/resolveCupWinner.ts`** — um mata-mata nunca
+  pode terminar empatado; um placar igual é resolvido "como se fosse
+  pênaltis", determinístico (seed = matchId) em vez de reescrito no
+  banco — como `Match` não tem coluna de "vencedor", o vencedor de um
+  empate é sempre recalculado por essa mesma função pura, nunca
+  persistido separadamente, então reconstruir a chave a partir do banco
+  sempre concorda consigo mesma.
+- **`competitions/ports/cupRepository.ts`** + adapters Prisma/in-memory
+  — só a primeira rodada existe no banco quando a copa é criada; cada
+  rodada seguinte só é gerada (`recordFixtureResult`) depois que TODOS
+  os jogos da rodada atual estiverem `FINISHED`, pareando os vencedores
+  na ordem do sorteio original (1º com o 8º, 2º com o 7º...). Sem
+  coluna nova pra guardar a ordem do sorteio — o adapter Prisma
+  recupera a ordem via `scheduledAt` (cada partida de uma rodada nasce
+  com um espaçamento de 1s entre si), mesma técnica que
+  `PrismaCompetitionRepository` já usa pra ordenar rodadas da liga.
+- **`ensureCupWildcardTeam` / `cupNameFor` / `resolveCupForSeason`**
+  (`career/services/ensureLeagueTeams.ts`) — o clube coringa é global e
+  compartilhado (como os 6 rivais), nunca aparece na tabela da liga.
+  `cupNameFor` segue exatamente o padrão de `leagueNameFor` (parte 1/3):
+  `"Copa Nacional 🇧🇷"`.
+- **`career/services/playCupMatch.ts`** — deliberadamente MAIS SIMPLES
+  que `playCareerMatch`: uma simulação completa de 90 minutos (sem as
+  pausas táticas de intervalo/70'), sem efeito em estágio de carreira,
+  lesão, estamina ou salário — a copa é um modo mais leve e
+  autocontido, com sua própria recompensa
+  (`economy/domain/cupReward.ts`, `grantCupReward.ts`, motivo
+  `"CUP_REWARD"` na carteira): base por fase alcançada, dobrada em caso
+  de vitória, crescendo de 40 coins (16-avos) até 360 (vencer a
+  Final).
+- **`/copa`** (comando + `renderCopa` reutilizável) — joga a próxima
+  partida pendente do time do jogador, ou mostra a chave atual se não
+  houver nada pra jogar agora (eliminado, ou esperando o outro lado da
+  chave terminar a rodada). Card novo (`discord/ui/cupCard.ts`) lista a
+  chave por fase e destaca o campeão quando decidido. Adicionado também
+  como atalho no `/menu` (chave `"cup"`).
+
+**O que foi validado de verdade:** o adapter in-memory tem cobertura
+direta e pesada (7 testes: idempotência, seed do primeiro turno,
+eliminação permanente do perdedor, avanço de fase só quando TODOS os
+jogos da rodada terminam, chave completa até o campeão, empate
+resolvido deterministicamente) — passou de primeira, sem precisar
+depurar a lógica de pareamento. `playCupMatch` tem 4 testes cobrindo o
+fluxo completo, recompensa, `played:false` e idempotência de
+recompensa. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` (399
+passando) e `npm run build` — todos limpos. Renderização do card
+verificada com um script throwaway (removido depois), cobrindo os
+estados "nada pra jogar" e "partida jogada com campeão decidido".
+
+**Passos manuais necessários:** apenas `npm run deploy-commands` pra
+registrar `/copa` no Discord — como não houve mudança de schema, NÃO é
+preciso rodar `prisma generate`/`migrate dev` para esta parte.
+
+**O que fica pra depois:** o adapter Prisma (`PrismaCupRepository`)
+está implementado e tipado mas, como todo o resto do projeto, nunca
+rodou contra um Postgres de verdade neste ambiente — ver
+docs/RISK_REGISTER.md. Estatísticas de partidas da copa somam nas
+mesmas agregações de temporada da liga (`PlayerSeasonStat`) por
+simplicidade — não há separação "gols na liga" vs "gols na copa"; e
+não existe hoje nenhuma forma de ver o histórico de campeões de
+temporadas passadas (só a chave da temporada atual).

@@ -1,7 +1,14 @@
 import type { CompetitionRepository, LeagueTeamInput } from "../../competitions/ports/competitionRepository.js";
+import type { CupRepository, CupTeamInput } from "../../competitions/ports/cupRepository.js";
 import { createRng, randomInt, type Rng } from "../../game/domain/rng.js";
 import { countryCodeToFlagEmoji } from "../../shared/flagEmoji.js";
-import { generateClubName, generateDistinctClubName, RIVAL_CLUB_KEYS, starterClubKeyFor } from "../domain/clubNaming.js";
+import {
+  CUP_WILDCARD_CLUB_KEY,
+  generateClubName,
+  generateDistinctClubName,
+  RIVAL_CLUB_KEYS,
+  starterClubKeyFor,
+} from "../domain/clubNaming.js";
 import type { CareerRepository, ClubRecord, SeasonRecord } from "../ports/careerRepository.js";
 
 /** Fictional country codes for rival clubs — just flavor, not tied to any real confederation. */
@@ -114,5 +121,61 @@ export async function resolveLeagueForSeason(
     seasonId: season.id,
     competitionName: leagueNameFor(player.nationality),
     teams: buildLeagueTeams(starter.teamId, starter.teamName, rivals),
+  });
+}
+
+/** Same naming policy as leagueNameFor — real cup-competition format/vibe, purely fictional name, per-nationality flag as the identity. */
+export function cupNameFor(nationality: string): string {
+  return `Copa Nacional ${countryCodeToFlagEmoji(nationality)}`;
+}
+
+const CUP_WILDCARD_TIER = 3;
+const CUP_WILDCARD_REPUTATION = 40;
+const CUP_WILDCARD_COUNTRY = "BR";
+
+/**
+ * The 8th club, existing only to round the league's 7 (1 starter + 6
+ * rivals) up to the power of 2 a knockout bracket needs (see
+ * competitions/domain/knockoutBracket.ts). Global and shared like the
+ * rivals — every cup in the world includes the same wildcard — and never
+ * enters the league table itself.
+ */
+export async function ensureCupWildcardTeam(careerRepository: CareerRepository, seasonId: string): Promise<RivalEntry> {
+  const club = await careerRepository.getOrCreateClub({
+    externalKey: CUP_WILDCARD_CLUB_KEY,
+    name: generateDistinctClubName(createRng(CUP_WILDCARD_CLUB_KEY), RIVAL_CLUB_KEYS.length),
+    country: CUP_WILDCARD_COUNTRY,
+    tier: CUP_WILDCARD_TIER,
+    reputation: CUP_WILDCARD_REPUTATION,
+  });
+  const team = await careerRepository.getOrCreateTeam({ clubId: club.id, seasonId, name: club.name });
+  return { club, teamId: team.id, teamName: club.name };
+}
+
+export function buildCupTeams(starterTeamId: string, starterClubName: string, rivals: RivalEntry[], wildcard: RivalEntry): CupTeamInput[] {
+  return [...buildLeagueTeams(starterTeamId, starterClubName, rivals), { teamId: wildcard.teamId, teamName: wildcard.teamName }];
+}
+
+/**
+ * Resolves (get-or-create) the cup's Tournament for a specific season —
+ * same league membership as resolveLeagueForSeason, plus the wildcard
+ * team to reach 8 entrants. Idempotent, same pattern as
+ * resolveLeagueForSeason; shared by playCupMatch.ts and viewCupStatus.ts
+ * so both always agree on exactly the same cup instance for a given
+ * season.
+ */
+export async function resolveCupForSeason(
+  careerRepository: CareerRepository,
+  cupRepository: CupRepository,
+  player: { nationality: string },
+  season: SeasonRecord,
+): Promise<{ tournamentId: string }> {
+  const rivals = await ensureRivalTeams(careerRepository, season.id);
+  const starter = await ensureStarterTeam(careerRepository, player.nationality, season.id);
+  const wildcard = await ensureCupWildcardTeam(careerRepository, season.id);
+  return cupRepository.getOrCreateSeasonCup({
+    seasonId: season.id,
+    competitionName: cupNameFor(player.nationality),
+    teams: buildCupTeams(starter.teamId, starter.teamName, rivals, wildcard),
   });
 }
