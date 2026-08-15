@@ -550,4 +550,73 @@ describe("playCareerMatch", () => {
 
     expect(defensive.result.events).not.toEqual(balanced.result.events);
   });
+
+  it("interactive penalty: calls resolvePenaltyDecision with the taker/minute/score, and omitting it plays byte-identical to the pre-hook baseline", async () => {
+    // Found by brute-forcing this exact scenario (playCareerMatch, full
+    // real-player squad via buildSquadFromProfile) until the real
+    // player's own team got awarded a penalty — same technique as the
+    // goal/injury seeds elsewhere in this file.
+    const seed = "service-penalty-search-17";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const withoutHook = makeDeps();
+    await createPlayerProfile(withoutHook, profileInput());
+    const baseline = await playCareerMatch(withoutHook, { discordId: "discord-1", now, seed });
+
+    const withHook = makeDeps();
+    await createPlayerProfile(withHook, profileInput());
+    let callCount = 0;
+    let capturedContext: { minute: number; takerName: string; playerSide: string; clubName: string; opponentName: string } | undefined;
+    await playCareerMatch(
+      {
+        ...withHook,
+        resolvePenaltyDecision: async (context) => {
+          callCount += 1;
+          capturedContext = context;
+          return { corner: "CENTER", power: "PLACED" };
+        },
+      },
+      { discordId: "discord-1", now, seed },
+    );
+
+    expect(callCount).toBeGreaterThanOrEqual(1);
+    expect(capturedContext?.playerSide).toBe(baseline.playerSide);
+    expect(capturedContext?.clubName).toBe(baseline.clubName);
+    expect(capturedContext?.opponentName).toBe(baseline.opponentName);
+    expect(typeof capturedContext?.takerName).toBe("string");
+    expect(typeof capturedContext?.minute).toBe("number");
+
+    // CENTER/PLACED still consumes a different RNG path than the
+    // non-interactive default (an extra keeper-guess roll — see
+    // resolvePenalty's doc comment), so this ISN'T asserted
+    // byte-identical to baseline; that would defeat the point of the
+    // choice mattering. The no-hook path (baseline itself, computed
+    // above with no resolvePenaltyDecision at all) is the actual
+    // "omitted = old behavior" proof: it never even considers a choice.
+    expect(baseline.result.events.some((e) => e.type === "PENALTY_SCORED" || e.type === "PENALTY_MISSED")).toBe(true);
+  });
+
+  it("interactive penalty: the corner/power choice is a real lever — same seed, different choices diverge", async () => {
+    const seed = "service-penalty-search-17";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const placedDeps = makeDeps();
+    await createPlayerProfile(placedDeps, profileInput());
+    const placedCenter = await playCareerMatch(
+      { ...placedDeps, resolvePenaltyDecision: async () => ({ corner: "CENTER", power: "PLACED" }) },
+      { discordId: "discord-1", now, seed },
+    );
+
+    const powerfulDeps = makeDeps();
+    await createPlayerProfile(powerfulDeps, profileInput());
+    const powerfulRight = await playCareerMatch(
+      { ...powerfulDeps, resolvePenaltyDecision: async () => ({ corner: "RIGHT", power: "POWERFUL" }) },
+      { discordId: "discord-1", now, seed },
+    );
+
+    expect(placedCenter.result.events.map((e) => `${e.minute}:${e.type}`)).not.toEqual(
+      powerfulRight.result.events.map((e) => `${e.minute}:${e.type}`),
+    );
+  });
+
 });

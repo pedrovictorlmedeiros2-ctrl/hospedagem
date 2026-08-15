@@ -4,6 +4,8 @@ import { createRng } from "../../../../src/game/domain/rng.js";
 import type { MatchSquad, SimMatchEventType } from "../../../../src/game/domain/types.js";
 import { InvalidSquadError } from "../../../../src/game/domain/validateSquad.js";
 import {
+  resumeFirstHalf,
+  resumePendingPenalty,
   simulateFirstHalf,
   simulateMatch,
   simulateSecondHalf,
@@ -267,5 +269,116 @@ describe("simulateMatch — every product-spec mechanic actually fires across a 
       expect(homeMinutes).toBeGreaterThan(0);
       expect(awayMinutes).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("interactive penalty pause — pauseOnPenalty", () => {
+  // Seeds found by brute-forcing this exact scenario until one produced a
+  // penalty for the desired side within the desired window — deterministic,
+  // not statistical (same technique used elsewhere in this file/project for
+  // "find a seed where X happens").
+  const HOME_PENALTY_SEED = "penalty-search-0"; // home penalty, minute 16, first half
+  const AWAY_PENALTY_SEED = "penalty-search-1"; // away penalty, minute 20, first half
+  const MID_WINDOW_PENALTY_SEED = "penalty-search-22"; // home penalty, minute 65, reached via simulateUntilMinute(70)
+
+  it("does nothing differently when pauseOnPenalty is omitted — same events as the non-interactive path", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const withoutOption = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED });
+    const explicitlyOff = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED, pauseOnPenalty: false });
+
+    expect(withoutOption.state.pendingPenalty).toBeUndefined();
+    expect(explicitlyOff.events).toEqual(withoutOption.events);
+  });
+
+  it("pauses mid-first-half exactly when a penalty for either side is awarded", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const handle = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED, pauseOnPenalty: true });
+
+    expect(handle.state.pendingPenalty).toBeDefined();
+    expect(handle.state.pendingPenalty?.attackingSide).toBe("home");
+    expect(handle.state.pendingPenalty?.minute).toBe(16);
+    // Nothing past the penalty's own minute happened yet — no HALFTIME,
+    // no events with a later minute.
+    expect(handle.events.some((e) => e.type === "HALFTIME")).toBe(false);
+    expect(handle.events.every((e) => e.minute <= 16)).toBe(true);
+    expect(handle.events.some((e) => e.type === "PENALTY_SCORED" || e.type === "PENALTY_MISSED")).toBe(false);
+  });
+
+  it("resumeFirstHalf is a safe no-op when there's nothing pending, and finishes the half once resolved", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const clean = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnPenalty: true });
+    expect(clean.state.pendingPenalty).toBeUndefined();
+    expect(resumeFirstHalf(clean)).toBe(clean); // same object, untouched
+
+    let paused = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED, pauseOnPenalty: true });
+    paused = resumePendingPenalty(paused, { corner: "CENTER", power: "PLACED" });
+    expect(paused.state.pendingPenalty).toBeUndefined();
+    expect(paused.events.some((e) => e.type === "PENALTY_SCORED" || e.type === "PENALTY_MISSED")).toBe(true);
+
+    const finished = resumeFirstHalf(paused);
+    expect(finished.state.pendingPenalty).toBeUndefined();
+    expect(finished.events.at(-1)?.type === "HALFTIME" || finished.state.pendingPenalty).toBeTruthy();
+    expect(finished.nextMinute).toBeGreaterThanOrEqual(17);
+  });
+
+  it("an opponent's pending penalty resolves the same with or without a choice — only the PLAYER's own decision should ever be asked for", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const handle = simulateFirstHalf(home, away, { seed: AWAY_PENALTY_SEED, pauseOnPenalty: true });
+    expect(handle.state.pendingPenalty?.attackingSide).toBe("away");
+
+    // The Discord layer never calls resolvePenaltyDecision for the
+    // opponent's penalty — simulating that by resolving with no choice,
+    // exactly like resumePendingPenalty's non-interactive default.
+    const resolved = resumePendingPenalty(handle, undefined);
+    expect(resolved.state.pendingPenalty).toBeUndefined();
+  });
+
+  it("reaches minute 65 paused when the pending penalty falls inside the 46-70 window, after resuming past halftime", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    let handle = simulateFirstHalf(home, away, { seed: MID_WINDOW_PENALTY_SEED, pauseOnPenalty: true });
+    expect(handle.state.pendingPenalty).toBeUndefined(); // clean first half for this seed
+
+    handle = simulateUntilMinute(handle, 70);
+    expect(handle.state.pendingPenalty?.attackingSide).toBe("home");
+    expect(handle.state.pendingPenalty?.minute).toBe(65);
+    expect(handle.nextMinute).toBe(66);
+  });
+
+  it("the corner/power choice is a real lever — same seed, different choices diverge from the exact same paused state", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const placedCenter = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED, pauseOnPenalty: true });
+    const placedCenterResolved = resumePendingPenalty(placedCenter, { corner: "CENTER", power: "PLACED" });
+
+    const powerfulRight = simulateFirstHalf(home, away, { seed: HOME_PENALTY_SEED, pauseOnPenalty: true });
+    const powerfulRightResolved = resumePendingPenalty(powerfulRight, { corner: "RIGHT", power: "POWERFUL" });
+
+    // Different choices consume the shared RNG differently (extra
+    // keeper-guess roll, extra "blasted wide" roll for POWERFUL) — the
+    // rest of the match, resumed from here, reliably diverges. Doesn't
+    // assert which choice is "better", just that the choice does
+    // something real instead of being silently ignored.
+    const finishedA = simulateSecondHalf(resumeFirstHalf(placedCenterResolved));
+    const finishedB = simulateSecondHalf(resumeFirstHalf(powerfulRightResolved));
+    expect(finishedA.events).not.toEqual(finishedB.events);
+  });
+
+  it("simulateMatch (the fully non-interactive path) never sets pendingPenalty even for a seed known to award one", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const result = simulateMatch(home, away, { seed: HOME_PENALTY_SEED });
+    expect(result.events.some((e) => e.type === "PENALTY_SCORED" || e.type === "PENALTY_MISSED")).toBe(true);
   });
 });

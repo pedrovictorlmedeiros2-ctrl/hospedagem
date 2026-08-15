@@ -1,3 +1,4 @@
+import type { PenaltyChoice } from "../domain/penaltyDecision.js";
 import { createRng, type Rng } from "../domain/rng.js";
 import type { MatchSimState, TeamRuntimeState } from "../domain/state.js";
 import { validateSquad } from "../domain/validateSquad.js";
@@ -8,8 +9,10 @@ import type {
   MatchSquad,
   SimMatchEvent,
 } from "../domain/types.js";
+import { MIDFIELD } from "../domain/types.js";
 import { buildLog } from "./commentary.js";
 import { initMatchState } from "./init.js";
+import { resolvePenalty } from "./resolveAction.js";
 import { resolvePhase } from "./resolvePhase.js";
 import { applyHalftimeRecovery } from "./stamina.js";
 
@@ -91,6 +94,30 @@ export interface MatchHandle {
   seed: string;
   /** The next regulation minute to simulate when this handle is resumed. */
   nextMinute: number;
+  /** Carried from the originating MatchOptions across every pause/resume — see MatchOptions.pauseOnPenalty. */
+  pauseOnPenalty: boolean;
+}
+
+/**
+ * The shared per-minute loop for every MatchHandle-returning phase —
+ * stops EARLY, before `toMinute`, the instant `resolvePhase` defers a
+ * penalty (`state.pendingPenalty` gets set — see PendingPenalty). Returns
+ * the minute the loop should resume from next time, whether that's
+ * because it ran clean to `toMinute` or paused partway through.
+ */
+function runMinutesUntil(
+  state: MatchSimState,
+  rng: Rng,
+  events: SimMatchEvent[],
+  fromMinute: number,
+  toMinute: number,
+  pauseOnPenalty: boolean,
+): number {
+  for (let minute = fromMinute; minute <= toMinute; minute++) {
+    events.push(...resolvePhase(state, minute, rng, pauseOnPenalty));
+    if (state.pendingPenalty) return minute + 1;
+  }
+  return toMinute + 1;
 }
 
 function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions): MatchHandle {
@@ -102,24 +129,85 @@ function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions)
   const events: SimMatchEvent[] = [
     { minute: 0, type: "KICKOFF", side: state.possession, playerId: null },
   ];
+  const pauseOnPenalty = options.pauseOnPenalty ?? false;
 
-  for (let minute = 1; minute <= HALFTIME_MINUTE; minute++) {
-    events.push(...resolvePhase(state, minute, rng));
+  const nextMinute = runMinutesUntil(state, rng, events, 1, HALFTIME_MINUTE, pauseOnPenalty);
+  if (state.pendingPenalty) {
+    return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty };
   }
 
   events.push({ minute: HALFTIME_MINUTE, type: "HALFTIME", side: null, playerId: null });
   applyHalftimeRecovery(state.home);
   applyHalftimeRecovery(state.away);
 
-  return { state, rng, events, seed: options.seed, nextMinute: HALFTIME_MINUTE + 1 };
+  return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty };
 }
 
 function runUntilMinute(handle: MatchHandle, uptoMinute: number): MatchHandle {
-  const { state, rng, events, seed } = handle;
-  for (let minute = handle.nextMinute; minute <= uptoMinute; minute++) {
-    events.push(...resolvePhase(state, minute, rng));
+  const { state, rng, events, seed, pauseOnPenalty } = handle;
+  const nextMinute = runMinutesUntil(state, rng, events, handle.nextMinute, uptoMinute, pauseOnPenalty);
+  return { state, rng, events, seed, nextMinute, pauseOnPenalty };
+}
+
+/**
+ * Resumes a `MatchHandle` that paused mid-first-half for a pending
+ * penalty (see resumePendingPenalty), continuing toward minute 45 and
+ * finishing halftime bookkeeping (HALFTIME event + stamina recovery) once
+ * truly reached. Safe to call when there's nothing to resume (already
+ * past halftime) — returns the handle unchanged. A second (or third...)
+ * penalty before 45 just means calling this again after resolving it.
+ */
+export function resumeFirstHalf(handle: MatchHandle): MatchHandle {
+  if (handle.nextMinute > HALFTIME_MINUTE) return handle;
+
+  const resumed = runUntilMinute(handle, HALFTIME_MINUTE);
+  if (resumed.state.pendingPenalty) return resumed;
+
+  resumed.events.push({ minute: HALFTIME_MINUTE, type: "HALFTIME", side: null, playerId: null });
+  applyHalftimeRecovery(resumed.state.home);
+  applyHalftimeRecovery(resumed.state.away);
+  return resumed;
+}
+
+/**
+ * Resolves a handle's pending penalty (a no-op if none is pending) and
+ * clears it — `choice` is the real player's interactive decision, omitted
+ * for every non-interactive case (an opponent's penalty, or any caller
+ * not tracking a specific side at all), which resolves exactly like the
+ * original inline path (see resolvePenalty's doc comment). The handle
+ * itself doesn't advance past the penalty's own minute — call
+ * `resumeFirstHalf` or `simulateUntilMinute` afterward to keep going.
+ */
+export function resumePendingPenalty(handle: MatchHandle, choice?: PenaltyChoice): MatchHandle {
+  const { state, rng, events } = handle;
+  const pending = state.pendingPenalty;
+  if (!pending) return handle;
+
+  const { minute, attackingSide, taker, gk } = pending;
+  const defendingSide: "home" | "away" = attackingSide === "home" ? "away" : "home";
+  const attackingTeam = state[attackingSide];
+  const defendingTeam = state[defendingSide];
+
+  const result = resolvePenalty(taker, gk, rng, choice);
+  if (result === "SCORED") {
+    if (attackingSide === "home") state.homeScore += 1;
+    else state.awayScore += 1;
+    const stats = attackingTeam.stats.get(taker.id);
+    if (stats) stats.goals += 1;
+    events.push({ minute, type: "PENALTY_SCORED", side: attackingSide, playerId: taker.id });
+  } else {
+    events.push({ minute, type: "PENALTY_MISSED", side: attackingSide, playerId: taker.id });
+    if (gk) {
+      const gkStats = defendingTeam.stats.get(gk.id);
+      if (gkStats) gkStats.saves += 1;
+    }
   }
-  return { state, rng, events, seed, nextMinute: uptoMinute + 1 };
+
+  state.zone = MIDFIELD;
+  state.possession = defendingSide;
+  delete state.pendingPenalty;
+
+  return handle;
 }
 
 function runSecondHalf(handle: MatchHandle): MatchResult {
@@ -127,9 +215,14 @@ function runSecondHalf(handle: MatchHandle): MatchResult {
   const home = state.home.squad;
   const away = state.away.squad;
 
-  for (let minute = handle.nextMinute; minute <= REGULATION_MINUTES; minute++) {
-    events.push(...resolvePhase(state, minute, rng));
-  }
+  // Never pauses, regardless of handle.pauseOnPenalty: a penalty in the
+  // final stretch (71'+) always resolves inline, same as before this
+  // feature existed. Making the last ~20 minutes (plus stoppage, whose
+  // very length depends on the full event list) resumable too would mean
+  // MatchResult itself — not just MatchHandle — needs a "paused" variant,
+  // a much bigger change for a rare, late-match edge case. See ADR 0001,
+  // adenda "Pênalti interativo".
+  runMinutesUntil(state, rng, events, handle.nextMinute, REGULATION_MINUTES, false);
 
   const stoppage = Math.min(
     MAX_STOPPAGE_MINUTES,

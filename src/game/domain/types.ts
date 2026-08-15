@@ -109,4 +109,14 @@ export interface MatchResult {
 
 export interface MatchOptions {
   seed: string;
+  /**
+   * When true, a penalty is NOT resolved inline — the engine defers it
+   * (see MatchSimState.pendingPenalty in game/domain/state.ts) and the
+   * caller must call resumePendingPenalty (game/engine/simulateMatch.ts)
+   * to continue. Every existing caller omits this and gets byte-identical
+   * behavior to before this option existed. Only honored by
+   * simulateFirstHalf/simulateUntilMinute — simulateSecondHalf always
+   * resolves penalties inline regardless (see its doc comment for why).
+   */
+  pauseOnPenalty?: boolean;
 }

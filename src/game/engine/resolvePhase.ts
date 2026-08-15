@@ -45,6 +45,7 @@ function applyOutcome(
   minute: number,
   events: SimMatchEvent[],
   rng: Rng,
+  pauseOnPenalty: boolean,
 ): void {
   const defendingSide = oppositeSide(attackingSide);
   const attackingTeam = state[attackingSide];
@@ -173,6 +174,16 @@ function applyOutcome(
       if (outcome.isPenalty && outcome.primaryPlayer) {
         const taker = outcome.primaryPlayer;
         const gk = getGoalkeeper(defendingTeam);
+
+        if (pauseOnPenalty) {
+          // Resolution deferred — see PendingPenalty's doc comment and
+          // simulateMatch.ts's resumePendingPenalty. No score/event is
+          // recorded yet; the possession/zone reset below also waits
+          // until resumption, since we don't know the outcome yet.
+          state.pendingPenalty = { minute, attackingSide, taker, gk };
+          break;
+        }
+
         const result = resolvePenalty(taker, gk, rng);
 
         if (result === "SCORED") {
@@ -200,8 +211,13 @@ function applyOutcome(
   }
 }
 
-/** Resolves one simulated minute: perceive → decide → resolve → apply, for whichever side currently has possession. */
-export function resolvePhase(state: MatchSimState, minute: number, rng: Rng): SimMatchEvent[] {
+/**
+ * Resolves one simulated minute: perceive → decide → resolve → apply, for
+ * whichever side currently has possession. `pauseOnPenalty` defers a
+ * penalty's resolution instead of resolving it inline — see
+ * MatchSimState.pendingPenalty and simulateMatch.ts's resumePendingPenalty.
+ */
+export function resolvePhase(state: MatchSimState, minute: number, rng: Rng, pauseOnPenalty = false): SimMatchEvent[] {
   const events: SimMatchEvent[] = [];
   const attackingSide = state.possession;
   const defendingSide = oppositeSide(attackingSide);
@@ -226,7 +242,7 @@ export function resolvePhase(state: MatchSimState, minute: number, rng: Rng): Si
   );
   recordAction(attackingTeam.pattern, action);
 
-  applyOutcome(state, attackingSide, outcome, minute, events, rng);
+  applyOutcome(state, attackingSide, outcome, minute, events, rng, pauseOnPenalty);
 
   drainStamina(attackingTeam, { hasPossession: true, isPressing: false });
   drainStamina(defendingTeam, { hasPossession: false, isPressing: reaction === "PRESS" });

@@ -1,5 +1,6 @@
+import type { PenaltyChoice, PenaltyCorner } from "../domain/penaltyDecision.js";
 import type { Rng } from "../domain/rng.js";
-import { rollContest } from "../domain/rng.js";
+import { randomInt, rollContest } from "../domain/rng.js";
 import type { TeamRuntimeState } from "../domain/state.js";
 import type { AttackAction, DefenseReaction, MatchPlayerInput } from "../domain/types.js";
 import {
@@ -206,12 +207,50 @@ export function resolveAction(
   }
 }
 
+const CORNERS: PenaltyCorner[] = ["LEFT", "CENTER", "RIGHT"];
+
+/**
+ * Interactive path only (see `choice` below) — the keeper commits to a
+ * guessed corner independently of the shooter's real choice, RNG-driven
+ * just like every other contest in this engine. Guessing right/wrong
+ * meaningfully swings the save odds, giving the player's corner pick real
+ * weight without modeling a full goalkeeper dive.
+ */
+function pickKeeperGuess(rng: Rng): PenaltyCorner {
+  const corner = CORNERS[randomInt(rng, 0, CORNERS.length - 1)];
+  if (!corner) throw new Error("Internal error: CORNERS is empty");
+  return corner;
+}
+
+/**
+ * `choice` is omitted for every non-interactive penalty (AI-vs-AI,
+ * friendlies, cup matches, an opponent's penalty even in an interactive
+ * career match) — that path is byte-for-byte the original implementation,
+ * same rng() call count and formula, so every seed's determinism from
+ * before this parameter existed is preserved exactly. Only a real
+ * player's own interactive choice (see career/services/playCareerMatch.ts's
+ * resolvePenaltyDecision hook) takes the second branch.
+ */
 export function resolvePenalty(
   shooter: MatchPlayerInput,
   gk: MatchPlayerInput | null,
   rng: Rng,
+  choice?: PenaltyChoice,
 ): "SCORED" | "MISSED" {
-  const takerQuality = shooter.shooting * 0.8 + shooter.overall * 0.2;
+  if (!choice) {
+    const takerQuality = shooter.shooting * 0.8 + shooter.overall * 0.2;
+    const gkPenaltyRating = gk?.gkPenalties ?? gkRating(gk);
+    return rollContest(rng, takerQuality, gkPenaltyRating * 0.9) ? "SCORED" : "MISSED";
+  }
+
+  let takerQuality = shooter.shooting * 0.8 + shooter.overall * 0.2;
+  if (choice.power === "POWERFUL") {
+    takerQuality += 8;
+    if (rng() < 0.08) return "MISSED"; // blasted over/wide — too rushed to even test the keeper
+  }
+
+  const guessedRight = pickKeeperGuess(rng) === choice.corner;
   const gkPenaltyRating = gk?.gkPenalties ?? gkRating(gk);
-  return rollContest(rng, takerQuality, gkPenaltyRating * 0.9) ? "SCORED" : "MISSED";
+  const effectiveGkRating = gkPenaltyRating * (guessedRight ? 1.3 : 0.55);
+  return rollContest(rng, takerQuality, effectiveGkRating) ? "SCORED" : "MISSED";
 }

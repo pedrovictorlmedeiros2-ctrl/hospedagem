@@ -1,4 +1,4 @@
-import type { AttackAction, MatchSquad, PitchZone, Side } from "./types.js";
+import type { AttackAction, MatchPlayerInput, MatchSquad, PitchZone, Side } from "./types.js";
 
 export interface PlayerRuntimeStats {
   minutesPlayed: number;
@@ -30,6 +30,20 @@ export interface TeamRuntimeState {
   pattern: PatternMemory;
 }
 
+/**
+ * A penalty awarded while `MatchOptions.pauseOnPenalty` is true, with its
+ * resolution deferred until `resumePendingPenalty` (simulateMatch.ts) is
+ * called — `taker`/`gk` are captured here (not re-looked-up later) so
+ * resolution doesn't depend on either player still being on the pitch by
+ * the time the pause ends.
+ */
+export interface PendingPenalty {
+  minute: number;
+  attackingSide: Side;
+  taker: MatchPlayerInput;
+  gk: MatchPlayerInput | null;
+}
+
 export interface MatchSimState {
   home: TeamRuntimeState;
   away: TeamRuntimeState;
@@ -39,4 +53,6 @@ export interface MatchSimState {
   awayScore: number;
   /** Minutes each side spent in possession — the source for the final possession percentage stat. */
   possessionMinutes: { home: number; away: number };
+  /** Set by resolvePhase when a penalty needs an external decision before it can be resolved — see PendingPenalty. */
+  pendingPenalty?: PendingPenalty;
 }

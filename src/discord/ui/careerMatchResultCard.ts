@@ -30,6 +30,8 @@ const DECISION_LABELS: Record<number, string> = { 45: "no intervalo", 70: "na re
 export interface CareerMatchResultCardExtra {
   /** Regulation minutes (45, 70) where the player didn't click a tactic button in time — see jogarCarreira.ts's makeResolveMatchTactic. */
   timedOutMinutes?: number[];
+  /** Minutes where the player had an interactive penalty but didn't pick a corner/power in time — see jogarCarreira.ts's makeResolvePenaltyDecision. */
+  penaltyTimeoutMinutes?: number[];
 }
 
 export function buildCareerMatchResultCard(match: PlayCareerMatchOutput, extra: CareerMatchResultCardExtra = {}): ContainerBuilder {
@@ -66,6 +68,9 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput, extra: 
   for (const minute of extra.timedOutMinutes ?? []) {
     const when = DECISION_LABELS[minute] ?? `aos ${minute}'`;
     footerLines.push(`⏱️ Sem resposta a tempo ${when} — o time seguiu Equilibrado.`);
+  }
+  for (const minute of extra.penaltyTimeoutMinutes ?? []) {
+    footerLines.push(`⏱️ Sem resposta a tempo no pênalti aos ${minute}' — a cobrança saiu no meio, colocada.`);
   }
   if (match.seasonRolledOver) {
     footerLines.push(

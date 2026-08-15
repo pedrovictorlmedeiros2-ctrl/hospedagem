@@ -1433,3 +1433,59 @@ documentadas no roadmap) em vez de um sistema novo maior.
 `npm run build` — todos limpos. Renderização das duas cards (resultado
 de carreira com aviso de timeout + botão de menu; copa com histórico)
 verificada com scripts throwaway (removidos depois).
+
+## Pênalti interativo: escolha de canto e força na hora exata do lance
+
+Pedido: "sugestão de sistemas ou features" → escolhida "mais decisões
+ao vivo na partida" (cobrança de pênalti + substituição). Ao investigar
+o motor antes de começar, ficou claro que hoje ele resolve um pênalti
+inteiro (falta → é pênalti? → cobra → gol ou defesa) dentro de uma
+única passada de cálculo, sem nenhum ponto intermediário pra pausar —
+diferente das duas decisões táticas já existentes (intervalo, 70'),
+que só pausam ENTRE minutos, nunca no meio de um. Perguntado ao usuário
+qual caminho preferia: uma preferência definida de antemão (mais
+simples) ou o botão aparecendo bem na hora do lance de verdade (mais
+fiel à ideia, mais trabalho no motor). Escolhido o segundo.
+
+- **`MatchSimState.pendingPenalty`** — quando a partida está marcada
+  como `pauseOnPenalty`, o motor captura os dados do pênalti (minuto,
+  lado, quem bate, o goleiro) e PARA ali, sem decidir o resultado — o
+  resto do minuto (estamina, substituição por cansaço) já rodou normal,
+  só o pênalti em si fica esperando. `resumePendingPenalty` retoma com
+  a escolha do jogador (ou sem escolha nenhuma, pro pênalti do
+  adversário, que sempre resolve sozinho na hora).
+- **Nenhum seed antigo mudou de resultado.** Quando `pauseOnPenalty`
+  não é usado (todo amistoso, duelo, copa, e qualquer teste já
+  existente), o pênalti resolve exatamente como sempre resolveu —
+  confirmado pelos 405 testes anteriores passando sem tocar em nenhum.
+- **Escolha real, não cosmética**: escolher canto e força muda de
+  verdade a chance de gol (o goleiro "adivinha" um canto próprio; acertar
+  o palpite pesa bastante na defesa; "Forte" arrisca mandar pra fora em
+  troca de mais força) — testado comparando a mesma seed com escolhas
+  diferentes e confirmando que o jogo diverge de verdade a partir dali.
+- **Corte de escopo consciente**: só pausa entre os minutos 1-70. Um
+  pênalti nos 20 minutos finais (ou nos acréscimos) sempre resolve
+  sozinho, sem perguntar — tornar esse trecho final pausável também
+  exigiria mexer em como o acréscimo é calculado (depende da lista
+  completa de eventos), desproporcional pra um lance raro no fim do
+  jogo. Documentado como risco aceito.
+- **`/jogar-carreira` ganhou um terceiro tipo de card** (além dos dois
+  de tática): `discord/ui/penaltyDecisionCard.ts`, 6 botões (3 cantos ×
+  2 forças). Sem resposta em 5 minutos, a cobrança sai no meio,
+  colocada — e isso vira uma nota no resultado final, mesmo padrão do
+  aviso de timeout tático já existente.
+
+**O que foi validado de verdade:** seeds achados por força bruta até
+produzirem um pênalti pro lado desejado (mesma técnica de sempre nesse
+projeto pra gol/lesão) — 9 testes novos no motor (pausa na hora certa,
+resume corretamente, pênalti do adversário nunca pergunta, a janela
+46'-70' também pausa, a escolha é uma alavanca real) e 3 no serviço
+(contexto certo é passado pro hook, escolhas diferentes divergem,
+card renderizado com dados de exemplo). `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (414 passando) e `npm run build` —
+todos limpos.
+
+**O que fica pra depois:** substituição interativa (a outra metade do
+pedido original) — ficou de fora desta leva por escopo; pênalti nos
+últimos 20 minutos/acréscimos continua não-interativo (ver corte de
+escopo acima).

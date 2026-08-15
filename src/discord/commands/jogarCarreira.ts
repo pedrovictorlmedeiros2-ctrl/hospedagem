@@ -1,13 +1,22 @@
 import { ComponentType, MessageFlags, SlashCommandBuilder, type RepliableInteraction } from "discord.js";
-import type { MatchTacticContext, ResolveMatchTactic } from "../../career/services/playCareerMatch.js";
+import type {
+  MatchTacticContext,
+  PenaltyDecisionContext,
+  ResolveMatchTactic,
+  ResolvePenaltyDecision,
+} from "../../career/services/playCareerMatch.js";
 import { playCareerMatch } from "../../career/services/playCareerMatch.js";
+import type { PenaltyChoice } from "../../game/domain/penaltyDecision.js";
 import type { MatchTacticChoice } from "../../game/domain/tactics.js";
 import { buildCareerMatchResultCard } from "../ui/careerMatchResultCard.js";
 import { MATCH_TACTIC_BUTTON_PREFIX, buildMatchTacticCard, type MatchTacticCardCopy } from "../ui/matchTacticCard.js";
+import { PENALTY_BUTTON_PREFIX, buildPenaltyDecisionCard, parsePenaltyButtonCustomId } from "../ui/penaltyDecisionCard.js";
 import type { Command, CommandContext } from "./types.js";
 
 /** No response in 5 minutes defaults to BALANCED (see buildMatchTacticCard's footer note) rather than leaving the match stuck mid-simulation forever. */
 const TACTIC_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
+/** Same timeout budget as the tactic decisions — see buildPenaltyDecisionCard's footer note for the default (center, placed). */
+const PENALTY_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * One factory shared by both pause points (halftime, late-game) — only the
@@ -47,11 +56,44 @@ function makeResolveMatchTactic(
   };
 }
 
+/**
+ * Same pause/wait/timeout shape as makeResolveMatchTactic, but for a
+ * penalty — fires at whatever minute the penalty actually happens,
+ * unlike the two fixed tactic checkpoints. `penaltyTimeoutMinutes` mirrors
+ * `timedOutMinutes` for tactics but stays a separate array since the
+ * footer note reads differently (see careerMatchResultCard.ts).
+ */
+function makeResolvePenaltyDecision(
+  interaction: RepliableInteraction,
+  logger: CommandContext["logger"],
+  penaltyTimeoutMinutes: number[],
+): ResolvePenaltyDecision {
+  return async (context: PenaltyDecisionContext): Promise<PenaltyChoice> => {
+    const card = buildPenaltyDecisionCard(context);
+    const message = await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+
+    try {
+      const buttonInteraction = await message.awaitMessageComponent({
+        componentType: ComponentType.Button,
+        filter: (i) => i.user.id === interaction.user.id && i.customId.startsWith(PENALTY_BUTTON_PREFIX),
+        time: PENALTY_DECISION_TIMEOUT_MS,
+      });
+      await buttonInteraction.deferUpdate();
+      return parsePenaltyButtonCustomId(buttonInteraction.customId);
+    } catch {
+      logger.info({ discordId: interaction.user.id, minute: context.minute }, "penalty decision timed out, defaulting to center/placed");
+      penaltyTimeoutMinutes.push(context.minute);
+      return { corner: "CENTER", power: "PLACED" };
+    }
+  };
+}
+
 /** Shared by the slash command and the /menu button (see discord/menuActions.ts) — identical result either way, including the two interactive tactic pauses. */
 export async function renderJogarCarreira(interaction: RepliableInteraction, ctx: CommandContext): Promise<void> {
   await interaction.deferReply();
 
   const timedOutMinutes: number[] = [];
+  const penaltyTimeoutMinutes: number[] = [];
   const match = await playCareerMatch(
     {
       userRepository: ctx.userRepository,
@@ -76,11 +118,12 @@ export async function renderJogarCarreira(interaction: RepliableInteraction, ctx
         { title: "⏱️ Reta final", prompt: "Faltam 20 minutos. Confirma a postura ou muda de ideia para o resto do jogo:" },
         timedOutMinutes,
       ),
+      resolvePenaltyDecision: makeResolvePenaltyDecision(interaction, ctx.logger, penaltyTimeoutMinutes),
     },
     { discordId: interaction.user.id },
   );
 
-  const card = buildCareerMatchResultCard(match, { timedOutMinutes });
+  const card = buildCareerMatchResultCard(match, { timedOutMinutes, penaltyTimeoutMinutes });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 
   ctx.logger.info(

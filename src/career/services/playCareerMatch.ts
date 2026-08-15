@@ -10,10 +10,18 @@ import { ensureContract } from "../../economy/services/ensureContract.js";
 import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
 import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
+import type { PenaltyChoice } from "../../game/domain/penaltyDecision.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
 import { styleForMatchTactic, type MatchTacticChoice } from "../../game/domain/tactics.js";
 import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
-import { simulateFirstHalf, simulateSecondHalf, simulateUntilMinute } from "../../game/engine/simulateMatch.js";
+import {
+  resumeFirstHalf,
+  resumePendingPenalty,
+  simulateFirstHalf,
+  simulateSecondHalf,
+  simulateUntilMinute,
+  type MatchHandle,
+} from "../../game/engine/simulateMatch.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { RecordCategory } from "../../global/domain/records.js";
 import type { RecordRepository } from "../../global/ports/recordRepository.js";
@@ -54,6 +62,19 @@ export interface MatchTacticContext {
 /** Resolves a tactical decision for an interactive match — see discord/commands/jogarCarreira.ts for the Discord-button adapter (sends a tactic card, awaits a click, falls back to BALANCED on timeout). Shared shape for both PlayCareerMatchDeps hooks below; each is called at a different pause point. */
 export type ResolveMatchTactic = (context: MatchTacticContext) => Promise<MatchTacticChoice>;
 
+export interface PenaltyDecisionContext {
+  minute: number;
+  takerName: string;
+  playerSide: Side;
+  clubName: string;
+  opponentName: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+/** Resolves the real player's own penalty (corner + power) — never called for the opponent's penalty, which always resolves automatically. See PlayCareerMatchDeps.resolvePenaltyDecision. */
+export type ResolvePenaltyDecision = (context: PenaltyDecisionContext) => Promise<PenaltyChoice>;
+
 export interface PlayCareerMatchDeps {
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
@@ -83,6 +104,16 @@ export interface PlayCareerMatchDeps {
    * `resolveHalftimeTactic`: either can be provided without the other.
    */
   resolveLateGameTactic?: ResolveMatchTactic;
+  /**
+   * Optional hook for an interactive penalty kick — corner + power —
+   * fired only when the pending penalty is the PLAYER's own (an
+   * opponent's penalty always auto-resolves, exactly like today).
+   * Omitted (the default) means every penalty resolves automatically,
+   * byte-identical to before this hook existed. Only takes effect for
+   * minutes 1-70 — see game/engine/simulateMatch.ts's runSecondHalf doc
+   * comment for why the final stretch (71'+) never pauses.
+   */
+  resolvePenaltyDecision?: ResolvePenaltyDecision;
 }
 
 export interface PlayCareerMatchInput {
@@ -112,6 +143,41 @@ export interface PlayCareerMatchOutput {
   seasonNumber: number;
   /** Achievements unlocked for the first time by this specific match. */
   achievementsUnlocked: AchievementKey[];
+}
+
+/**
+ * Drains every pending penalty on `handle` before returning — asking
+ * `deps.resolvePenaltyDecision` only when it's the PLAYER's own side
+ * (an opponent's penalty always auto-resolves with no choice, same as
+ * before this hook existed). `resume` continues toward whichever
+ * boundary the caller was originally heading to (resumeFirstHalf for
+ * the 1-45 stretch, `simulateUntilMinute(h, 70)` for 46-70) — a second
+ * penalty before that boundary just means looping again.
+ */
+async function drainPendingPenalties(
+  handle: MatchHandle,
+  resume: (handle: MatchHandle) => MatchHandle,
+  deps: Pick<PlayCareerMatchDeps, "resolvePenaltyDecision">,
+  context: { playerSide: Side; clubName: string; opponentName: string },
+): Promise<MatchHandle> {
+  while (handle.state.pendingPenalty) {
+    const pending = handle.state.pendingPenalty;
+    let choice: PenaltyChoice | undefined;
+    if (pending.attackingSide === context.playerSide && deps.resolvePenaltyDecision) {
+      choice = await deps.resolvePenaltyDecision({
+        minute: pending.minute,
+        takerName: pending.taker.name,
+        playerSide: context.playerSide,
+        clubName: context.clubName,
+        opponentName: context.opponentName,
+        homeScore: handle.state.homeScore,
+        awayScore: handle.state.awayScore,
+      });
+    }
+    handle = resumePendingPenalty(handle, choice);
+    handle = resume(handle);
+  }
+  return handle;
 }
 
 export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCareerMatchInput): Promise<PlayCareerMatchOutput> {
@@ -176,7 +242,11 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   const playerSide: Side = isPlayerHome ? "home" : "away";
 
   deps.events.emit("MATCH_STARTED", { matchId: fixture.matchId });
-  let handle = simulateFirstHalf(home, away, { seed });
+  const wantsPenaltyPause = !!deps.resolvePenaltyDecision;
+  const penaltyContext = { playerSide, clubName: club.name, opponentName };
+
+  let handle = simulateFirstHalf(home, away, { seed, pauseOnPenalty: wantsPenaltyPause });
+  handle = await drainPendingPenalties(handle, resumeFirstHalf, deps, penaltyContext);
   if (deps.resolveHalftimeTactic) {
     const choice = await deps.resolveHalftimeTactic({
       homeScore: handle.state.homeScore,
@@ -188,17 +258,24 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     });
     handle.state[playerSide].squad.style = styleForMatchTactic(choice);
   }
-  if (deps.resolveLateGameTactic) {
+  // Also runs the 46-70 stretch through the pausable path (not just when
+  // resolveLateGameTactic is set) whenever the player has a penalty hook
+  // at all — otherwise a penalty in this window would only ever hit
+  // simulateSecondHalf's inline, non-interactive path.
+  if (deps.resolveLateGameTactic || wantsPenaltyPause) {
     handle = simulateUntilMinute(handle, LATE_GAME_DECISION_MINUTE);
-    const choice = await deps.resolveLateGameTactic({
-      homeScore: handle.state.homeScore,
-      awayScore: handle.state.awayScore,
-      playerSide,
-      clubName: club.name,
-      opponentName,
-      minute: LATE_GAME_DECISION_MINUTE,
-    });
-    handle.state[playerSide].squad.style = styleForMatchTactic(choice);
+    handle = await drainPendingPenalties(handle, (h) => simulateUntilMinute(h, LATE_GAME_DECISION_MINUTE), deps, penaltyContext);
+    if (deps.resolveLateGameTactic) {
+      const choice = await deps.resolveLateGameTactic({
+        homeScore: handle.state.homeScore,
+        awayScore: handle.state.awayScore,
+        playerSide,
+        clubName: club.name,
+        opponentName,
+        minute: LATE_GAME_DECISION_MINUTE,
+      });
+      handle.state[playerSide].squad.style = styleForMatchTactic(choice);
+    }
   }
   const result = simulateSecondHalf(handle);
   deps.events.emit("MATCH_FINISHED", { matchId: fixture.matchId, homeScore: result.homeScore, awayScore: result.awayScore });
