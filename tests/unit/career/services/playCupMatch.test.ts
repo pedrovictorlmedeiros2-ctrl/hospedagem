@@ -67,14 +67,32 @@ describe("playCupMatch", () => {
     expect(wallet.coins).toBe(BigInt(match.coinsEarned ?? 0));
   });
 
-  it("returns played:false once the player's team has nothing pending (round not fully decided yet)", async () => {
+  it("never blocks on the other bracket games — advances (or gets eliminated) every single call", async () => {
     const deps = makeDeps();
     await createPlayerProfile(deps, profileInput());
 
-    await playCupMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
-    const second = await playCupMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
+    let roundsPlayed = 0;
+    let eliminated = false;
+    for (let i = 0; i < 5; i++) {
+      const match = await playCupMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
+      if (!match.played) break;
+      roundsPlayed += 1;
+      if (match.outcome === "LOSS") {
+        eliminated = true;
+        break;
+      }
+    }
 
-    expect(second.played).toBe(false);
+    // A cup only has 3 rounds (QUARTER_FINAL, SEMI_FINAL, FINAL) — winning
+    // every one of them or getting eliminated along the way are the only
+    // two ways this loop ends; it must never just "run out" of fixtures
+    // to play while still alive in the bracket (that's the bug this fixes:
+    // no other real player exists to play the sibling QF/SF matches).
+    expect(roundsPlayed).toBeGreaterThan(0);
+    expect(eliminated || roundsPlayed === 3).toBe(true);
+
+    const nextAfterEnd = await playCupMatch(deps, { discordId: "discord-1", now: new Date("2026-08-14T00:00:00Z") });
+    expect(nextAfterEnd.played).toBe(false);
   });
 
   it("is idempotent: replaying the exact same fixture doesn't grant a second reward", async () => {

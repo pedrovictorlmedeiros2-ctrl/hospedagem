@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { generateKnockoutBracket } from "../domain/knockoutBracket.js";
 import { resolveCupWinner } from "../domain/resolveCupWinner.js";
+import { simulateSyntheticCupMatch } from "../domain/simulateSyntheticCupMatch.js";
 import type {
   CupFixtureRecord,
   CupRepository,
@@ -119,19 +120,35 @@ export class PrismaCupRepository implements CupRepository {
   /**
    * The Match row's own score/status is already written by
    * MatchRepository.persistMatchResult before this is called (same
-   * convention as CompetitionRepository) — this only handles bracket
-   * progression: once every match of the just-finished match's stage is
-   * FINISHED, the next stage's fixtures are generated from the winners.
+   * convention as CompetitionRepository). Nobody ever plays the sibling
+   * fixtures between two synthetic clubs in the same round — see
+   * simulateSyntheticCupMatch's doc comment — so they're resolved right
+   * here, the instant the real player's own match comes in, instead of
+   * waiting on a coincidence that may never happen. Only then does the
+   * next stage's fixtures get generated from the winners.
    */
   async recordFixtureResult(tournamentId: string, matchId: string, _homeScore: number, _awayScore: number): Promise<void> {
     const match = await this.prisma.match.findUnique({ where: { id: matchId }, include: { stage: true } });
     if (!match || !match.stageId || !match.stage) return;
 
-    const stageMatches = await this.prisma.match.findMany({
+    let stageMatches = await this.prisma.match.findMany({
       where: { stageId: match.stageId },
       orderBy: { scheduledAt: "asc" },
     });
-    if (!stageMatches.every((row) => row.status === "FINISHED")) return;
+
+    const pendingSiblings = stageMatches.filter((row) => row.status !== "FINISHED");
+    if (pendingSiblings.length > 0) {
+      await Promise.all(
+        pendingSiblings.map((row) => {
+          const synthetic = simulateSyntheticCupMatch(row.id);
+          return this.prisma.match.update({
+            where: { id: row.id },
+            data: { homeScore: synthetic.homeScore, awayScore: synthetic.awayScore, status: "FINISHED", finishedAt: new Date() },
+          });
+        }),
+      );
+      stageMatches = await this.prisma.match.findMany({ where: { stageId: match.stageId }, orderBy: { scheduledAt: "asc" } });
+    }
 
     const stages = await this.prisma.tournamentStage.findMany({ where: { tournamentId }, orderBy: { order: "asc" } });
     const currentStageIndex = stages.findIndex((stage) => stage.id === match.stageId);

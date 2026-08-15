@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { StageType } from "@prisma/client";
 import { generateKnockoutBracket } from "../domain/knockoutBracket.js";
 import { resolveCupWinner } from "../domain/resolveCupWinner.js";
+import { simulateSyntheticCupMatch } from "../domain/simulateSyntheticCupMatch.js";
 import type {
   CupFixtureRecord,
   CupRepository,
@@ -106,8 +107,17 @@ export class InMemoryCupRepository implements CupRepository {
     target.awayScore = awayScore;
 
     const stageMatches = state.matchesByStage.get(target.stage) ?? [];
-    const stageComplete = stageMatches.every((match) => match.homeScore !== null);
-    if (!stageComplete) return;
+    // Nobody plays the sibling fixtures between two synthetic clubs — see
+    // simulateSyntheticCupMatch's doc comment. Resolving them right here
+    // means the round always closes the instant the real player's own
+    // match is recorded, instead of waiting on a coincidence.
+    for (const sibling of stageMatches) {
+      if (sibling.homeScore === null) {
+        const synthetic = simulateSyntheticCupMatch(sibling.matchId);
+        sibling.homeScore = synthetic.homeScore;
+        sibling.awayScore = synthetic.awayScore;
+      }
+    }
 
     const stageIndex = state.stageTypes.indexOf(target.stage);
     const nextStageType = state.stageTypes[stageIndex + 1];

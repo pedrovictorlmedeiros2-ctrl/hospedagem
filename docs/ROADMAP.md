@@ -1331,3 +1331,37 @@ mesmas agregações de temporada da liga (`PlayerSeasonStat`) por
 simplicidade — não há separação "gols na liga" vs "gols na copa"; e
 não existe hoje nenhuma forma de ver o histórico de campeões de
 temporadas passadas (só a chave da temporada atual).
+
+### Correção pós-teste do usuário: copa travava depois da 1ª vitória
+
+Reportado direto pelo usuário testando localmente: "só consigo uma vez
+mesmo que ganhei". Causa: `recordFixtureResult` só gerava a próxima
+fase depois que TODOS os jogos da rodada estivessem decididos —
+inclusive os outros 3 confrontos das quartas que não envolvem o
+jogador real nenhum. Como ninguém mais joga por esses clubes
+sintéticos, esses jogos nunca aconteciam sozinhos, e a chave ficava
+travada pra sempre depois da primeira vitória.
+
+Corrigido com `competitions/domain/simulateSyntheticCupMatch.ts`:
+assim que a partida real do jogador é registrada, todo confronto ainda
+pendente da mesma rodada é resolvido na hora com um placar plausível
+(determinístico por `matchId`, ninguém vê essa partida mesmo) — a
+rodada fecha sempre no mesmo instante em que o jogador termina a
+própria partida, sem depender de coincidência nenhuma. Aplicado nos
+dois adapters (`InMemoryCupRepository` e `PrismaCupRepository`).
+
+Nota de design: isso significa que se DOIS jogadores reais
+compartilharem a mesma nacionalidade (mesmo pool de 7 clubes + coringa
+— ver `ensureStarterTeam`), quem chamar `/copa` primeiro numa rodada
+resolve o confronto do outro também, por sorteio. Não é um risco novo:
+é exatamente o mesmo modelo que a liga já usa pro clube inicial
+compartilhado (múltiplos jogadores da mesma nacionalidade já dividem o
+mesmo calendário de liga hoje) — só estendido de "quem chama primeiro
+consome a rodada" pra "quem chama primeiro decide os dois lados".
+
+Testes reescritos pra refletir o comportamento correto: em vez de
+jogar manualmente os 4 confrontos das quartas pra avançar de fase, os
+testes agora só registram a partida do time real e verificam que a
+próxima fase já está disponível na hora. `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (401 passando) e `npm run build` —
+todos limpos.
