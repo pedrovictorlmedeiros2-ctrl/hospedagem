@@ -704,7 +704,7 @@ Decisão de design comum às três correções, generalizando o padrão já usad
 
 Cada correção tem: (1) verificação empírica com o script throwaway antes de escrever o teste permanente, (2) teste de regressão permanente convertendo o mesmo cenário de corrida pra vitest (`playCareerMatch.test.ts`, `acceptTransferOffer.test.ts`, `trainPlayer.test.ts`), (3) sem migration nova além dos dois campos `DateTime?` adicionados (`Career.lastTransferClaimAt`, `Player.lastTrainingClaimAt`) na mesma migration inicial (ainda não aplicada contra um Postgres real neste ambiente — ver Risco #2).
 
-Um quarto achado (Risco #48) foi identificado mas não corrigido nesta revisão: `grantMatchReward` sempre reporta `amount` no valor recém-calculado mesmo numa chamada deduplicada, embora o saldo real da carteira permaneça corretamente protegido — puramente cosmético, sem exploit de dinheiro real, priorizado abaixo dos três achados de corrupção de estado.
+Um quarto achado (Risco #48), puramente cosmético — `grantMatchReward` sempre reportava `amount` no valor recém-calculado mesmo numa chamada deduplicada, embora o saldo real da carteira sempre tenha ficado corretamente protegido — também foi corrigido: `amount` agora reporta `0` quando `alreadyGranted` é `true`, mesmo padrão já usado por `salaryPaid`.
 
 ## Consequências
 

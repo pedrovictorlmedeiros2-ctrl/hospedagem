@@ -959,16 +959,20 @@ novos (`Career.lastTransferClaimAt`, `Player.lastTrainingClaimAt`),
 adicionados na mesma migration inicial — ainda não aplicada contra um
 Postgres real neste ambiente.
 
-**Um quarto achado, não corrigido** (Risco #48): `grantMatchReward`
-sempre reporta `amount` no valor recém-calculado mesmo numa chamada
-deduplicada — puramente cosmético (o saldo real da carteira está
-protegido), priorizado abaixo dos três achados de corrupção de estado.
+**Um quarto achado, também corrigido** (Risco #48): `grantMatchReward`
+sempre reportava `amount` no valor recém-calculado mesmo numa chamada
+deduplicada — puramente cosmético (o saldo real da carteira sempre
+esteve protegido), mas corrigido no mesmo pacote: `amount` agora reporta
+`0` quando `alreadyGranted` é `true`, mesmo padrão que `salaryPaid` já
+usava.
 
-**O que foi validado de verdade:** 3 testes de regressão novos (372 no
+**O que foi validado de verdade:** 4 testes de regressão novos (373 no
 total) convertendo cada script throwaway num cenário `Promise.allSettled`
 permanente em vitest (`playCareerMatch.test.ts`,
-`acceptTransferOffer.test.ts`, `trainPlayer.test.ts`), confirmando não só
-que a chamada perdedora é rejeitada, mas que o estado final (saldo de
-carteira, `PlayerSeasonStat`, atributos do jogador) reflete exatamente
-UMA operação bem-sucedida. `npx tsc --noEmit`, `npx eslint .`, `npx
-vitest run` (372 passando) e `npm run build` — todos limpos.
+`acceptTransferOffer.test.ts`, `trainPlayer.test.ts`,
+`grantMatchReward.test.ts`), confirmando não só que a chamada perdedora
+é rejeitada, mas que o estado final (saldo de carteira,
+`PlayerSeasonStat`, atributos do jogador, valor reportado ao chamador)
+reflete exatamente UMA operação bem-sucedida. `npx tsc --noEmit`, `npx
+eslint .`, `npx vitest run` (373 passando) e `npm run build` — todos
+limpos.

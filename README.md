@@ -13,9 +13,11 @@ automático de temporada** (risco #33 — ao esgotar os 12 jogos da liga,
 **conquistas** (risco #35 — catálogo fixo de 6 conquistas desbloqueadas
 em `/jogar-carreira`, `/duelo-responder` e `/abrir-pacote`, consultável
 via `/conquistas`) e uma **revisão de segurança/concorrência da
-economia** que encontrou e corrigiu 3 race conditions reais (riscos
-#45–47: persistência de partida sem idempotência, bônus de transferência
-e cooldown de treino ambos burláveis por corrida) — ver
+economia** que encontrou e corrigiu 3 race conditions reais mais 1 bug
+cosmético (riscos #45–48: persistência de partida sem idempotência,
+bônus de transferência e cooldown de treino ambos burláveis por
+corrida, e um valor de recompensa mal reportado numa chamada
+deduplicada) — ver
 `docs/RISK_REGISTER.md` para o detalhe de cada uma. A integração real
 com Discord e Postgres ainda não foi validada neste ambiente (sem
 credenciais) — ver `docs/ROADMAP.md` para o que "implementado" significa

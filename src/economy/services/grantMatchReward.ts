@@ -12,6 +12,7 @@ export interface GrantMatchRewardInput extends MatchRewardInput {
 }
 
 export interface GrantMatchRewardOutput {
+  /** Coins actually credited BY THIS CALL — 0 when alreadyGranted is true, since no money moved. Never the computed reward at face value on a deduped call, so callers (e.g. playCareerMatch's coinsEarned) can't report a payment that didn't happen. */
   amount: number;
   balanceAfter: bigint;
   alreadyGranted: boolean;
@@ -21,13 +22,13 @@ export async function grantMatchReward(
   deps: GrantMatchRewardDeps,
   input: GrantMatchRewardInput,
 ): Promise<GrantMatchRewardOutput> {
-  const amount = calculateMatchReward(input);
+  const computedAmount = calculateMatchReward(input);
 
   const { balanceAfter, alreadyApplied } = await deps.walletRepository.applyTransaction({
     userId: input.userId,
     currency: "COINS",
     type: "SOURCE",
-    amount: BigInt(amount),
+    amount: BigInt(computedAmount),
     reason: "MATCH_REWARD",
     idempotencyKey: `match-reward:${input.matchId}`,
     metadata: {
@@ -39,5 +40,5 @@ export async function grantMatchReward(
     },
   });
 
-  return { amount, balanceAfter, alreadyGranted: alreadyApplied };
+  return { amount: alreadyApplied ? 0 : computedAmount, balanceAfter, alreadyGranted: alreadyApplied };
 }

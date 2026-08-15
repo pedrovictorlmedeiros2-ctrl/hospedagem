@@ -47,4 +47,28 @@ describe("grantMatchReward", () => {
     const wallet = await walletRepository.getOrCreateWallet("user-1");
     expect(wallet.coins).toBe(BigInt(first.amount));
   });
+
+  it("reports amount: 0 on a deduped call — never the computed reward at face value when nothing was actually paid", async () => {
+    // Regression: this used to always return calculateMatchReward's value
+    // regardless of alreadyGranted, so a caller (e.g. playCareerMatch's
+    // coinsEarned) would report a payment that never happened on a retry.
+    const walletRepository = new InMemoryWalletRepository();
+    const input = {
+      userId: "user-1",
+      matchId: "match-1",
+      outcome: "WIN" as const,
+      lineupStatus: "STARTING" as const,
+      goals: 1,
+      assists: 0,
+      rating: 7.5,
+    };
+
+    const first = await grantMatchReward({ walletRepository }, input);
+    expect(first.amount).toBe(calculateMatchReward(input));
+    expect(first.amount).toBeGreaterThan(0);
+
+    const second = await grantMatchReward({ walletRepository }, input);
+    expect(second.alreadyGranted).toBe(true);
+    expect(second.amount).toBe(0);
+  });
 });

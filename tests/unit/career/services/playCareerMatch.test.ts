@@ -378,15 +378,15 @@ describe("playCareerMatch", () => {
     const seasonStat = await deps.matchRepository.getPlayerSeasonStat(player.id, seasonId);
     expect(seasonStat?.matches).toBe(1);
 
-    // Exactly one match's worth of reward + salary landed, not three. The
-    // three calls simulate the identical deterministic match (same seed,
-    // same squads), so coinsEarned is reported identically by all of
-    // them; salaryPaid is 0 for whichever call(s) lost the wallet
-    // idempotency race, so the real value is whichever is nonzero.
+    // Exactly one match's worth of reward + salary landed, not three.
+    // coinsEarned/salaryPaid are both 0 for whichever call(s) lost their
+    // respective wallet idempotency race (grantMatchReward and the salary
+    // applyTransaction each report 0 on a deduped call, not the computed
+    // face value), so the real value is whichever result is nonzero.
     const fulfilledValues = (results as PromiseFulfilledResult<Awaited<ReturnType<typeof playCareerMatch>>>[]).map(
       (r) => r.value,
     );
-    const coinsEarned = fulfilledValues[0]!.coinsEarned;
+    const coinsEarned = Math.max(...fulfilledValues.map((v) => v.coinsEarned));
     const salaryPaid = Math.max(...fulfilledValues.map((v) => v.salaryPaid));
     const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
     expect(wallet.coins).toBe(BigInt(coinsEarned + salaryPaid));
