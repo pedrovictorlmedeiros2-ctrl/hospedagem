@@ -74,23 +74,26 @@ function computeRating(input: {
 }
 
 /**
- * A match paused at halftime — everything `simulateSecondHalf` needs to
- * finish the simulation. `state` is intentionally exposed (not just an
- * opaque handle): a caller running an *interactive* match can reach in
- * and mutate `state[side].squad.style` between the two calls — e.g. to
- * apply a player's halftime tactical choice — since resolvePhase reads
- * `squad.style` fresh every minute (see game/ai/decide.ts). Nothing about
- * `simulateFirstHalf` itself performs that mutation; it's purely a
- * resumable checkpoint.
+ * A match paused mid-simulation, resumable from `nextMinute` onward.
+ * `state` is intentionally exposed (not just an opaque handle): a caller
+ * running an *interactive* match can reach in and mutate
+ * `state[side].squad.style` while paused — e.g. to apply a player's
+ * tactical choice — since resolvePhase reads `squad.style` fresh every
+ * minute (see game/ai/decide.ts). Nothing about producing a handle
+ * performs that mutation; it's purely a resumable checkpoint. A match can
+ * be paused any number of times (see simulateUntilMinute) before finally
+ * being finished with simulateSecondHalf.
  */
-export interface FirstHalfHandle {
+export interface MatchHandle {
   state: MatchSimState;
   rng: Rng;
   events: SimMatchEvent[];
   seed: string;
+  /** The next regulation minute to simulate when this handle is resumed. */
+  nextMinute: number;
 }
 
-function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions): FirstHalfHandle {
+function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions): MatchHandle {
   validateSquad(home);
   validateSquad(away);
 
@@ -108,15 +111,23 @@ function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions)
   applyHalftimeRecovery(state.home);
   applyHalftimeRecovery(state.away);
 
-  return { state, rng, events, seed: options.seed };
+  return { state, rng, events, seed: options.seed, nextMinute: HALFTIME_MINUTE + 1 };
 }
 
-function runSecondHalf(firstHalf: FirstHalfHandle): MatchResult {
-  const { state, rng, events, seed } = firstHalf;
+function runUntilMinute(handle: MatchHandle, uptoMinute: number): MatchHandle {
+  const { state, rng, events, seed } = handle;
+  for (let minute = handle.nextMinute; minute <= uptoMinute; minute++) {
+    events.push(...resolvePhase(state, minute, rng));
+  }
+  return { state, rng, events, seed, nextMinute: uptoMinute + 1 };
+}
+
+function runSecondHalf(handle: MatchHandle): MatchResult {
+  const { state, rng, events, seed } = handle;
   const home = state.home.squad;
   const away = state.away.squad;
 
-  for (let minute = HALFTIME_MINUTE + 1; minute <= REGULATION_MINUTES; minute++) {
+  for (let minute = handle.nextMinute; minute <= REGULATION_MINUTES; minute++) {
     events.push(...resolvePhase(state, minute, rng));
   }
 
@@ -169,25 +180,37 @@ export function simulateFirstHalf(
   home: MatchSquad,
   away: MatchSquad,
   options: MatchOptions,
-): FirstHalfHandle {
+): MatchHandle {
   return runFirstHalf(home, away, options);
 }
 
-/** Resumes a `FirstHalfHandle` and finishes the match. See simulateFirstHalf's doc comment for the interactive-mutation contract. */
-export function simulateSecondHalf(firstHalf: FirstHalfHandle): MatchResult {
-  return runSecondHalf(firstHalf);
+/**
+ * Resumes a `MatchHandle` and runs regulation minutes up to (and
+ * including) `uptoMinute`, WITHOUT finishing the match — a second (or
+ * third, etc.) pause point after halftime, e.g. career/services/
+ * playCareerMatch.ts's `resolveLateGameTactic` at minute 70. `uptoMinute`
+ * must be between the handle's current position and 90 (stoppage time
+ * is only ever attached by simulateSecondHalf, at the very end).
+ */
+export function simulateUntilMinute(handle: MatchHandle, uptoMinute: number): MatchHandle {
+  return runUntilMinute(handle, uptoMinute);
+}
+
+/** Resumes a `MatchHandle` (from any pause point) and finishes the match. See simulateFirstHalf's doc comment for the interactive-mutation contract. */
+export function simulateSecondHalf(handle: MatchHandle): MatchResult {
+  return runSecondHalf(handle);
 }
 
 /**
  * Runs a full, deterministic match simulation in one call — the
- * non-interactive path used by every caller that doesn't need a
- * halftime pause (friendlies, duels, and career matches with no
- * `resolveHalftimeTactic` hook). Pure function: no I/O, no clock, no
- * randomness beyond what `options.seed` controls — the same inputs
- * always produce the exact same `MatchResult`. Literally just
- * simulateFirstHalf immediately followed by simulateSecondHalf with no
- * mutation in between, so this composition is byte-for-byte identical
- * to the pre-split implementation for the same seed.
+ * non-interactive path used by every caller that doesn't need any pause
+ * (friendlies, duels, and career matches with no interactive tactic
+ * hooks). Pure function: no I/O, no clock, no randomness beyond what
+ * `options.seed` controls — the same inputs always produce the exact
+ * same `MatchResult`. Literally just simulateFirstHalf immediately
+ * followed by simulateSecondHalf with no mutation in between, so this
+ * composition is byte-for-byte identical to the pre-split implementation
+ * for the same seed.
  */
 export function simulateMatch(
   home: MatchSquad,

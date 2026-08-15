@@ -1059,3 +1059,41 @@ todos limpos.
 substituição pontual), notificação separada quando o timeout de 5
 minutos é atingido, e persistência do estado pausado entre reinícios do
 processo (ver Risco #50 em RISK_REGISTER.md).
+
+## Partida interativa: segundo ponto de decisão aos 70' (follow-up)
+
+Extensão direta do follow-up acima — a mesma técnica (pausar, mostrar
+botões, aplicar a escolha, retomar) aplicada a um SEGUNDO momento da
+partida, não só o intervalo.
+
+- **Motor generalizado**: `simulateFirstHalf`/`simulateSecondHalf`
+  viraram `MatchHandle` com um campo `nextMinute`, e ganharam
+  `simulateUntilMinute(handle, uptoMinute)` — pausa em qualquer minuto,
+  não só no intervalo. `simulateSecondHalf` agora retoma de
+  `handle.nextMinute` (46 ou 71, dependendo de por onde o handle
+  passou) em vez de um número fixo. Nenhuma mudança de comportamento
+  pros dois pontos já existentes (`simulateFirstHalf`/`simulateMatch`)
+  — confirmado pelos 14 testes do motor (os 12 originais + os 2 da
+  primeira adenda) passando sem alteração.
+- **`playCareerMatch` ganhou um segundo hook opcional,
+  `resolveLateGameTactic`**, chamado aos 70' — independente do
+  `resolveHalftimeTactic`: qualquer um dos dois pode estar presente sem
+  o outro. Mesmo `MatchTacticChoice`/`TeamStyle` reaproveitado, mesmo
+  contrato "Equilibrado é sempre um no-op".
+- **`/jogar-carreira` agora pode pausar até duas vezes** por partida —
+  intervalo e reta final — cada uma com seu próprio card ("⏸️
+  Intervalo" / "⏱️ Reta final"), construídos pela mesma função
+  (`buildMatchTacticCard`, generalizada a partir do `buildHalftimeCard`
+  da adenda anterior).
+
+**O que foi validado de verdade:** 5 testes novos (383 no total) — 2 no
+motor (`simulateUntilMinute` pausa exatamente no minuto pedido e a
+composição de três fases ainda bate com a versão monolítica; mutar o
+estilo no segundo ponto de pausa também é um lever real) e 3 no serviço
+(o hook aos 70' dispara exatamente uma vez, independente do hook do
+intervalo; omitir o hook do 70' não o chama, e Equilibrado+Equilibrado
+reproduz o baseline sem hook nenhum; Defensivo aos 70' produz uma
+sequência de eventos diferente de Equilibrado). Cards renderizados com
+dados de exemplo (incluindo o jogador no time visitante) antes de
+integrar. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` (383
+passando) e `npm run build` — todos limpos.

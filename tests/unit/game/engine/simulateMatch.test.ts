@@ -3,7 +3,12 @@ import { generateSquad } from "../../../../src/game/domain/generateSquad.js";
 import { createRng } from "../../../../src/game/domain/rng.js";
 import type { MatchSquad, SimMatchEventType } from "../../../../src/game/domain/types.js";
 import { InvalidSquadError } from "../../../../src/game/domain/validateSquad.js";
-import { simulateFirstHalf, simulateMatch, simulateSecondHalf } from "../../../../src/game/engine/simulateMatch.js";
+import {
+  simulateFirstHalf,
+  simulateMatch,
+  simulateSecondHalf,
+  simulateUntilMinute,
+} from "../../../../src/game/engine/simulateMatch.js";
 
 function squad(teamId: string, teamName: string, avgOverall: number, seed: string): MatchSquad {
   return generateSquad({ teamId, teamName, style: "TACTICAL", avgOverall, rng: createRng(seed) });
@@ -105,6 +110,36 @@ describe("simulateFirstHalf / simulateSecondHalf — the split powering interact
     const aggressiveResult = simulateSecondHalf(aggressive);
 
     const defensive = simulateFirstHalf(home, away, { seed: "style-lever-seed" });
+    defensive.state.home.squad.style = "DEFENSIVE";
+    const defensiveResult = simulateSecondHalf(defensive);
+
+    expect(aggressiveResult.events).not.toEqual(defensiveResult.events);
+  });
+
+  it("simulateUntilMinute pauses at an arbitrary later minute (the late-game decision point), and the full three-phase composition still matches the monolithic result when nothing is mutated", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const monolithic = simulateMatch(home, away, { seed: "three-phase-seed" });
+
+    const firstHalf = simulateFirstHalf(home, away, { seed: "three-phase-seed" });
+    const untilLateGame = simulateUntilMinute(firstHalf, 70);
+    expect(untilLateGame.events.every((event) => event.minute <= 70)).toBe(true);
+    expect(untilLateGame.nextMinute).toBe(71);
+
+    const threePhase = simulateSecondHalf(untilLateGame);
+    expect(threePhase).toEqual(monolithic);
+  });
+
+  it("mutating style at the late-game pause point (after already resuming once from halftime) is still a real lever", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const aggressive = simulateUntilMinute(simulateFirstHalf(home, away, { seed: "late-game-lever-seed" }), 70);
+    aggressive.state.home.squad.style = "AGGRESSIVE";
+    const aggressiveResult = simulateSecondHalf(aggressive);
+
+    const defensive = simulateUntilMinute(simulateFirstHalf(home, away, { seed: "late-game-lever-seed" }), 70);
     defensive.state.home.squad.style = "DEFENSIVE";
     const defensiveResult = simulateSecondHalf(defensive);
 

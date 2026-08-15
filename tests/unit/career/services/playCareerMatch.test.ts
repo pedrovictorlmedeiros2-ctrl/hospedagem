@@ -466,4 +466,88 @@ describe("playCareerMatch", () => {
     // half's simulated minutes.
     expect(offensive.result.events).not.toEqual(balanced.result.events);
   });
+
+  it("interactive late-game: resolveLateGameTactic fires once at minute 70, independently of resolveHalftimeTactic", async () => {
+    const seed = "late-game-hook-seed";
+    const now = new Date("2026-08-14T00:00:00Z");
+    const deps = makeDeps();
+    await createPlayerProfile(deps, profileInput());
+
+    let halftimeCalls = 0;
+    let lateGameCalls = 0;
+    let lateGameMinute: number | undefined;
+    const match = await playCareerMatch(
+      {
+        ...deps,
+        resolveHalftimeTactic: async (context) => {
+          halftimeCalls += 1;
+          expect(context.minute).toBe(45);
+          return "BALANCED";
+        },
+        resolveLateGameTactic: async (context) => {
+          lateGameCalls += 1;
+          lateGameMinute = context.minute;
+          return "BALANCED";
+        },
+      },
+      { discordId: "discord-1", now, seed },
+    );
+
+    expect(halftimeCalls).toBe(1);
+    expect(lateGameCalls).toBe(1);
+    expect(lateGameMinute).toBe(70);
+    expect(match.result.events.at(-1)?.type).toBe("FULLTIME");
+  });
+
+  it("interactive late-game: omitting resolveLateGameTactic (only resolveHalftimeTactic set) never calls it, and BALANCED+BALANCED matches the no-hook baseline", async () => {
+    const seed = "late-game-noop-seed";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const withoutHooks = makeDeps();
+    await createPlayerProfile(withoutHooks, profileInput());
+    const baseline = await playCareerMatch(withoutHooks, { discordId: "discord-1", now, seed });
+
+    const withBothHooks = makeDeps();
+    await createPlayerProfile(withBothHooks, profileInput());
+    let lateGameCalls = 0;
+    const bothBalanced = await playCareerMatch(
+      {
+        ...withBothHooks,
+        resolveHalftimeTactic: async () => "BALANCED",
+        resolveLateGameTactic: async () => {
+          lateGameCalls += 1;
+          return "BALANCED";
+        },
+      },
+      { discordId: "discord-1", now, seed },
+    );
+
+    expect(lateGameCalls).toBe(1);
+    expect(bothBalanced.result.homeScore).toBe(baseline.result.homeScore);
+    expect(bothBalanced.result.awayScore).toBe(baseline.result.awayScore);
+    expect(bothBalanced.result.events.map((e) => `${e.minute}:${e.type}`)).toEqual(
+      baseline.result.events.map((e) => `${e.minute}:${e.type}`),
+    );
+  });
+
+  it("interactive late-game: DEFENSIVE at 70' actually steers the final stretch to a different result than BALANCED", async () => {
+    const seed = "late-game-defensive-vs-balanced-seed";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const balancedDeps = makeDeps();
+    await createPlayerProfile(balancedDeps, profileInput());
+    const balanced = await playCareerMatch(
+      { ...balancedDeps, resolveLateGameTactic: async () => "BALANCED" },
+      { discordId: "discord-1", now, seed },
+    );
+
+    const defensiveDeps = makeDeps();
+    await createPlayerProfile(defensiveDeps, profileInput());
+    const defensive = await playCareerMatch(
+      { ...defensiveDeps, resolveLateGameTactic: async () => "DEFENSIVE" },
+      { discordId: "discord-1", now, seed },
+    );
+
+    expect(defensive.result.events).not.toEqual(balanced.result.events);
+  });
 });

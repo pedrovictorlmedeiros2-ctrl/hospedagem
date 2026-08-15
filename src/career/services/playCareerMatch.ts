@@ -11,9 +11,9 @@ import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
 import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
-import { styleForHalftimeTactic, type HalftimeTacticChoice } from "../../game/domain/tactics.js";
+import { styleForMatchTactic, type MatchTacticChoice } from "../../game/domain/tactics.js";
 import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
-import { simulateFirstHalf, simulateSecondHalf } from "../../game/engine/simulateMatch.js";
+import { simulateFirstHalf, simulateSecondHalf, simulateUntilMinute } from "../../game/engine/simulateMatch.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { RecordCategory } from "../../global/domain/records.js";
 import type { RecordRepository } from "../../global/ports/recordRepository.js";
@@ -37,17 +37,22 @@ function randomStyle(rng: Rng): TeamStyle {
   );
 }
 
-export interface HalftimeContext {
+/** The regulation minute the second (late-game) tactical decision fires at — a natural "final stretch" moment, far enough from both halftime and fulltime to feel like its own beat. */
+const LATE_GAME_DECISION_MINUTE = 70;
+
+export interface MatchTacticContext {
   homeScore: number;
   awayScore: number;
   /** Which side the real player is on — the tactical choice only ever changes the PLAYER's team style, never the opponent's. */
   playerSide: Side;
   clubName: string;
   opponentName: string;
+  /** The regulation minute this decision is being made at (45 for halftime, 70 for the late-game check-in) — lets a single UI builder phrase the prompt/countdown correctly for either pause point. */
+  minute: number;
 }
 
-/** Resolves a halftime tactical decision for an interactive match — see discord/commands/jogarCarreira.ts for the Discord-button adapter (sends the halftime card, awaits a click, falls back to BALANCED on timeout). */
-export type ResolveHalftimeTactic = (context: HalftimeContext) => Promise<HalftimeTacticChoice>;
+/** Resolves a tactical decision for an interactive match — see discord/commands/jogarCarreira.ts for the Discord-button adapter (sends a tactic card, awaits a click, falls back to BALANCED on timeout). Shared shape for both PlayCareerMatchDeps hooks below; each is called at a different pause point. */
+export type ResolveMatchTactic = (context: MatchTacticContext) => Promise<MatchTacticChoice>;
 
 export interface PlayCareerMatchDeps {
   userRepository: UserRepository;
@@ -64,12 +69,20 @@ export interface PlayCareerMatchDeps {
    * Optional hook for an interactive halftime tactical decision. Called
    * once, right after the first half, with the score at the break — must
    * resolve to a choice, which is then applied to the player's squad
-   * style for the second half only. Omitted (the default, and every
-   * existing caller/test) preserves the exact old single-pass
-   * simulation: the player's squad stays at its default TACTICAL style
-   * the whole match, byte-identical to before this hook existed.
+   * style. Omitted (the default, and every existing caller/test)
+   * preserves the exact old single-pass simulation: the player's squad
+   * stays at its default TACTICAL style the whole match, byte-identical
+   * to before this hook existed.
    */
-  resolveHalftimeTactic?: ResolveHalftimeTactic;
+  resolveHalftimeTactic?: ResolveMatchTactic;
+  /**
+   * Optional hook for a SECOND tactical decision, at
+   * LATE_GAME_DECISION_MINUTE (70') — only fires when provided; omitting
+   * it plays straight from halftime (or kickoff) to fulltime in one
+   * simulation call, exactly as before this hook existed. Independent of
+   * `resolveHalftimeTactic`: either can be provided without the other.
+   */
+  resolveLateGameTactic?: ResolveMatchTactic;
 }
 
 export interface PlayCareerMatchInput {
@@ -163,18 +176,31 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   const playerSide: Side = isPlayerHome ? "home" : "away";
 
   deps.events.emit("MATCH_STARTED", { matchId: fixture.matchId });
-  const firstHalf = simulateFirstHalf(home, away, { seed });
+  let handle = simulateFirstHalf(home, away, { seed });
   if (deps.resolveHalftimeTactic) {
     const choice = await deps.resolveHalftimeTactic({
-      homeScore: firstHalf.state.homeScore,
-      awayScore: firstHalf.state.awayScore,
+      homeScore: handle.state.homeScore,
+      awayScore: handle.state.awayScore,
       playerSide,
       clubName: club.name,
       opponentName,
+      minute: 45,
     });
-    firstHalf.state[playerSide].squad.style = styleForHalftimeTactic(choice);
+    handle.state[playerSide].squad.style = styleForMatchTactic(choice);
   }
-  const result = simulateSecondHalf(firstHalf);
+  if (deps.resolveLateGameTactic) {
+    handle = simulateUntilMinute(handle, LATE_GAME_DECISION_MINUTE);
+    const choice = await deps.resolveLateGameTactic({
+      homeScore: handle.state.homeScore,
+      awayScore: handle.state.awayScore,
+      playerSide,
+      clubName: club.name,
+      opponentName,
+      minute: LATE_GAME_DECISION_MINUTE,
+    });
+    handle.state[playerSide].squad.style = styleForMatchTactic(choice);
+  }
+  const result = simulateSecondHalf(handle);
   deps.events.emit("MATCH_FINISHED", { matchId: fixture.matchId, homeScore: result.homeScore, awayScore: result.awayScore });
 
   const matchPlayerInputId = realPlayerMatchId(player);
