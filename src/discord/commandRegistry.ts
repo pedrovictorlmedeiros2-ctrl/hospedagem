@@ -14,6 +14,7 @@ import { duelosCommand } from "./commands/duelos.js";
 import { entrevistaCommand } from "./commands/entrevista.js";
 import { favoritarCommand } from "./commands/favoritar.js";
 import { jogarCarreiraCommand } from "./commands/jogarCarreira.js";
+import { menuCommand } from "./commands/menu.js";
 import { noticiasCommand } from "./commands/noticias.js";
 import { pacotesCommand } from "./commands/pacotes.js";
 import { personalizarCommand } from "./commands/personalizar.js";
@@ -39,6 +40,7 @@ export function buildCommandRegistry(): Collection<string, Command> {
 
   for (const command of [
     pingCommand,
+    menuCommand,
     criarPerfilCommand,
     personalizarCommand,
     simularAmistosoCommand,

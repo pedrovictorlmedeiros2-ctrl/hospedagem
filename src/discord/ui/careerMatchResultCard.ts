@@ -1,7 +1,8 @@
-import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 import { CAREER_STAGE_LABELS } from "../../career/domain/labels.js";
 import type { PlayCareerMatchOutput } from "../../career/services/playCareerMatch.js";
 import type { MatchResult, SimMatchEventType } from "../../game/domain/types.js";
+import { menuButtonCustomId } from "../menuButtonId.js";
 import { achievementUnlockLines } from "./achievementUnlockLines.js";
 import { progressBar } from "./progressBar.js";
 
@@ -78,6 +79,12 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput): Contai
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(footerLines.join("\n")));
   }
+
+  const shortcuts = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(menuButtonCustomId("play")).setLabel("🔄 Jogar de novo").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(menuButtonCustomId("career")).setLabel("📋 Ver carreira").setStyle(ButtonStyle.Secondary),
+  );
+  container.addActionRowComponents(shortcuts);
 
   return container;
 }

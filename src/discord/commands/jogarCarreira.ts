@@ -1,4 +1,4 @@
-import { ComponentType, MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
+import { ComponentType, MessageFlags, SlashCommandBuilder, type RepliableInteraction } from "discord.js";
 import type { MatchTacticContext, ResolveMatchTactic } from "../../career/services/playCareerMatch.js";
 import { playCareerMatch } from "../../career/services/playCareerMatch.js";
 import type { MatchTacticChoice } from "../../game/domain/tactics.js";
@@ -11,7 +11,7 @@ const TACTIC_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** One factory shared by both pause points (halftime, late-game) — only the card's heading/prompt text differs between them. */
 function makeResolveMatchTactic(
-  interaction: ChatInputCommandInteraction,
+  interaction: RepliableInteraction,
   logger: CommandContext["logger"],
   copy: MatchTacticCardCopy,
 ): ResolveMatchTactic {
@@ -38,48 +38,51 @@ function makeResolveMatchTactic(
   };
 }
 
+/** Shared by the slash command and the /menu button (see discord/menuActions.ts) — identical result either way, including the two interactive tactic pauses. */
+export async function renderJogarCarreira(interaction: RepliableInteraction, ctx: CommandContext): Promise<void> {
+  await interaction.deferReply();
+
+  const match = await playCareerMatch(
+    {
+      userRepository: ctx.userRepository,
+      playerRepository: ctx.playerRepository,
+      careerRepository: ctx.careerRepository,
+      competitionRepository: ctx.competitionRepository,
+      matchRepository: ctx.matchRepository,
+      walletRepository: ctx.walletRepository,
+      marketRepository: ctx.marketRepository,
+      recordRepository: ctx.recordRepository,
+      achievementRepository: ctx.achievementRepository,
+      events: ctx.events,
+      resolveHalftimeTactic: makeResolveMatchTactic(interaction, ctx.logger, {
+        title: "⏸️ Intervalo",
+        prompt: "Fim do primeiro tempo. Escolha a postura do seu time para os 45 minutos finais:",
+      }),
+      resolveLateGameTactic: makeResolveMatchTactic(interaction, ctx.logger, {
+        title: "⏱️ Reta final",
+        prompt: "Faltam 20 minutos. Confirma a postura ou muda de ideia para o resto do jogo:",
+      }),
+    },
+    { discordId: interaction.user.id },
+  );
+
+  const card = buildCareerMatchResultCard(match);
+  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+
+  ctx.logger.info(
+    {
+      discordId: interaction.user.id,
+      score: `${match.result.homeScore}-${match.result.awayScore}`,
+      stage: match.newStage,
+    },
+    "career match played",
+  );
+}
+
 export const jogarCarreiraCommand: Command = {
   data: new SlashCommandBuilder()
     .setName("jogar-carreira")
     .setDescription("Joga a próxima partida da sua carreira pelo clube atual."),
 
-  async execute(interaction, ctx) {
-    await interaction.deferReply();
-
-    const match = await playCareerMatch(
-      {
-        userRepository: ctx.userRepository,
-        playerRepository: ctx.playerRepository,
-        careerRepository: ctx.careerRepository,
-        competitionRepository: ctx.competitionRepository,
-        matchRepository: ctx.matchRepository,
-        walletRepository: ctx.walletRepository,
-        marketRepository: ctx.marketRepository,
-        recordRepository: ctx.recordRepository,
-        achievementRepository: ctx.achievementRepository,
-        events: ctx.events,
-        resolveHalftimeTactic: makeResolveMatchTactic(interaction, ctx.logger, {
-          title: "⏸️ Intervalo",
-          prompt: "Fim do primeiro tempo. Escolha a postura do seu time para os 45 minutos finais:",
-        }),
-        resolveLateGameTactic: makeResolveMatchTactic(interaction, ctx.logger, {
-          title: "⏱️ Reta final",
-          prompt: "Faltam 20 minutos. Confirma a postura ou muda de ideia para o resto do jogo:",
-        }),
-      },
-      { discordId: interaction.user.id },
-    );
-
-    const card = buildCareerMatchResultCard(match);
-    await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
-
-    ctx.logger.info(
-      {
-        discordId: interaction.user.id,
-        score: `${match.result.homeScore}-${match.result.awayScore}`,
-        stage: match.newStage,
-      },
-      "career match played",
-    );
-  },
+  execute: renderJogarCarreira,
 };

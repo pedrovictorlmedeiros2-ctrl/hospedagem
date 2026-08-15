@@ -1,6 +1,7 @@
-import { ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 import { CAREER_STAGE_LABELS } from "../../career/domain/labels.js";
 import type { ViewCareerOutput } from "../../career/services/viewCareer.js";
+import { menuButtonCustomId } from "../menuButtonId.js";
 import { progressBar } from "./progressBar.js";
 
 /** Double round-robin against the 6 shared rival clubs (see career/services/ensureLeagueTeams.ts) — fixed regardless of season number, so this is safe to hardcode purely for the progress bar's denominator. */
@@ -26,11 +27,18 @@ export function buildCareerCard(view: ViewCareerOutput): ContainerBuilder {
       ]
     : ["Ainda sem partidas nesta temporada. Use /jogar-carreira."];
 
+  const shortcuts = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(menuButtonCustomId("play")).setLabel("⚽ Jogar partida").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(menuButtonCustomId("wallet")).setLabel("🪙 Carteira").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(menuButtonCustomId("standings")).setLabel("🏆 Classificação").setStyle(ButtonStyle.Secondary),
+  );
+
   return new ContainerBuilder()
     .setAccentColor(hasActiveInjury ? 0xe74c3c : 0x2ecc71)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 📋 Carreira"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headerLines.join("\n")))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statsLines.join("\n")));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statsLines.join("\n")))
+    .addActionRowComponents(shortcuts);
 }

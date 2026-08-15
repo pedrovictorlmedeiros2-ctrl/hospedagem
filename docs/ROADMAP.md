@@ -1097,3 +1097,61 @@ sequência de eventos diferente de Equilibrado). Cards renderizados com
 dados de exemplo (incluindo o jogador no time visitante) antes de
 integrar. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` (383
 passando) e `npm run build` — todos limpos.
+
+## Menu de botões (follow-up)
+
+Pedido direto: "tá mt comando ainda" — muitos comandos de barra pra
+lembrar. Primeira fatia: um `/menu` central com botões pras ações mais
+usadas, mais botões de atalho embutidos nos cards de `/carreira` e
+`/jogar-carreira`.
+
+- **`/menu`** (novo comando) mostra um painel com 8 botões — Carreira,
+  Jogar partida, Classificação, Carteira, Coleção, Duelos, Ranking,
+  Conquistas — cada um reaproveitando a lógica exata do comando de
+  barra correspondente, não uma reimplementação paralela.
+- **Só comandos sem parâmetro obrigatório entraram nessa primeira
+  fatia.** `/treinar` (exige escolher o foco), `/transferir`,
+  `/personalizar`, `/carta`, `/entrevista` e outros que pedem texto/
+  seleção ficam de fora — um botão não tem como coletar esse input
+  ainda (precisaria de select menu ou modal, escopo de uma fatia
+  futura).
+- **Arquitetura**: cada comando simples (`carreira.ts`, `carteira.ts`,
+  `colecao.ts`, `duelos.ts`, `ranking.ts`, `classificacao.ts`,
+  `conquistas.ts`, `jogarCarreira.ts`) exporta uma função `render*`
+  tipada contra `RepliableInteraction` (tipo do discord.js que cobre
+  tanto `ChatInputCommandInteraction` quanto `ButtonInteraction`) — o
+  `execute` do slash command e o handler do botão no `/menu` chamam a
+  MESMA função, nunca duas implementações do mesmo resultado.
+  `discord/menuActions.ts` é o registro (`Map`-like) desses handlers
+  por chave (`career`, `play`, `wallet`, etc.), espelhando o padrão já
+  usado por `commandRegistry.ts` pros slash commands.
+- **`discord/client.ts` ganhou uma segunda rota de interação** — além
+  de `isChatInputCommand()`, agora também trata `isButton()` com
+  customId prefixado `menu:`. Todo OUTRO clique de botão (ex.: os
+  botões de tática de `/jogar-carreira`) é ignorado por esse listener e
+  continua tratado pelo próprio `awaitMessageComponent` de cada
+  comando — os dois convivem porque o listener novo só reage a um
+  prefixo que é exclusivamente seu.
+- **Ciclo de import evitado de propósito**: os cards de UI
+  (`careerCard.ts`, `careerMatchResultCard.ts`) que embutem botões de
+  atalho não importam de `menuActions.ts` (que puxa TODOS os
+  `render*` dos comandos, criando um ciclo real: card → menuActions →
+  comando → card) — importam só de um arquivo novo minúsculo,
+  `discord/menuButtonId.ts`, com zero dependências, que só define o
+  prefixo e o helper de customId.
+
+**O que foi validado de verdade:** os 383 testes existentes passando
+sem nenhuma alteração (a extração de `render*` preserva o comportamento
+de cada comando 1:1), mais verificação de runtime real de que o ciclo
+de import foi evitado (script throwaway importando `menuCard.ts`,
+`menuActions.ts` e `careerCard.ts` juntos, sem travar/`undefined`) e
+renderização de exemplo dos três cards (menu, carreira com atalhos,
+resultado de partida com atalhos) antes de integrar. `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (383 passando) e `npm run build` —
+todos limpos.
+
+**O que fica pra depois:** atalhos em mais cards (duelo, coleção),
+botões pra comandos com parâmetro via select menu/modal (`/treinar`
+seria o candidato mais óbvio), e um botão "⬅️ Voltar ao menu" nos
+resultados (hoje cada ação abre uma resposta nova, não substitui o
+`/menu` original — funciona bem, mas não fecha o ciclo de navegação).

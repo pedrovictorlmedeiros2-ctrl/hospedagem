@@ -29,6 +29,7 @@ decisões de arquitetura.
 | Comando | O que faz |
 |---------|-----------|
 | `/ping` | Health check do bot + banco de dados |
+| `/menu` | Painel com botões pras ações mais usadas (carreira, jogar, classificação, carteira, coleção, duelos, ranking, conquistas) — evita ter que digitar cada comando |
 | `/criar-perfil` | Cria o jogador (nome, apelido, nacionalidade, idade, posição, pé, altura, estilo, número) |
 | `/personalizar identidade` | Edita nome, apelido, número, frase e comemoração |
 | `/personalizar visual` | Edita cores, tema, estilo de carta, moldura e fundo (cosmético, sem efeito no gameplay) |

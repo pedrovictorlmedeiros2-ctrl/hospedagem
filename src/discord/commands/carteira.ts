@@ -4,10 +4,11 @@ import {
   SeparatorBuilder,
   SlashCommandBuilder,
   TextDisplayBuilder,
+  type RepliableInteraction,
 } from "discord.js";
 import type { WalletTransactionRecord } from "../../economy/ports/walletRepository.js";
 import { viewWallet } from "../../economy/services/viewWallet.js";
-import type { Command } from "./types.js";
+import type { Command, CommandContext } from "./types.js";
 
 const REASON_LABELS: Record<string, string> = {
   MATCH_REWARD: "Recompensa de partida",
@@ -24,34 +25,36 @@ function formatTransactionLine(tx: WalletTransactionRecord): string {
   return `${sign}${tx.amount} 🪙 — ${label}`;
 }
 
+export async function renderCarteira(interaction: RepliableInteraction, ctx: CommandContext): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const view = await viewWallet(
+    { userRepository: ctx.userRepository, walletRepository: ctx.walletRepository },
+    { discordId: interaction.user.id },
+  );
+
+  const card = new ContainerBuilder()
+    .setAccentColor(0xf39c12)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🪙 Carteira"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${view.coins} coins**`));
+
+  if (view.recentTransactions.length > 0) {
+    const lines = view.recentTransactions.map(formatTransactionLine);
+    card
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(["**Últimas movimentações**", ...lines].join("\n")),
+      );
+  }
+
+  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+}
+
 export const carteiraCommand: Command = {
   data: new SlashCommandBuilder()
     .setName("carteira")
     .setDescription("Mostra seu saldo de coins e o histórico recente de movimentações."),
 
-  async execute(interaction, ctx) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    const view = await viewWallet(
-      { userRepository: ctx.userRepository, walletRepository: ctx.walletRepository },
-      { discordId: interaction.user.id },
-    );
-
-    const card = new ContainerBuilder()
-      .setAccentColor(0xf39c12)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🪙 Carteira"))
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${view.coins} coins**`));
-
-    if (view.recentTransactions.length > 0) {
-      const lines = view.recentTransactions.map(formatTransactionLine);
-      card
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(["**Últimas movimentações**", ...lines].join("\n")),
-        );
-    }
-
-    await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
-  },
+  execute: renderCarteira,
 };
