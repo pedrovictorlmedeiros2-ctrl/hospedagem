@@ -35,7 +35,7 @@ decisões de arquitetura.
 | `/simular-amistoso` | Simula uma partida de teste do motor contra um adversário sintético (não persiste no banco) |
 | `/carreira` | Mostra clube, estágio de carreira, estatísticas da temporada e status de lesão |
 | `/treinar` | Treina um atributo (uma sessão por dia, retorno decrescente perto do limite); opção "intensivo" dobra o ganho por coins, mesmo cooldown |
-| `/jogar-carreira` | Joga a próxima rodada agendada da liga — persiste no banco, atualiza classificação/estatísticas, paga recompensa em coins e pode promover/lesionar o jogador |
+| `/jogar-carreira` | Joga a próxima rodada agendada da liga — no intervalo, você escolhe a postura tática (ofensiva/equilibrada/defensiva) pelos botões antes do segundo tempo; persiste no banco, atualiza classificação/estatísticas, paga recompensa em coins e pode promover/lesionar o jogador |
 | `/classificacao` | Mostra a tabela da liga (pontos, saldo de gols, posição do seu clube) |
 | `/carteira` | Mostra seu saldo de coins e o histórico recente de movimentações |
 | `/contrato` | Mostra seu contrato atual: salário por partida, cláusula de rescisão e validade |

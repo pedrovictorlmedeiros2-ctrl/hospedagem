@@ -391,4 +391,79 @@ describe("playCareerMatch", () => {
     const wallet = await deps.walletRepository.getOrCreateWallet(user.id);
     expect(wallet.coins).toBe(BigInt(coinsEarned + salaryPaid));
   });
+
+  it("interactive halftime: calls resolveHalftimeTactic exactly once with the break score and player side, and applies BALANCED as a true no-op", async () => {
+    // BALANCED maps to the same "TACTICAL" style buildSquadFromProfile
+    // already defaults to (see game/domain/tactics.ts) — so a match
+    // played with a BALANCED-returning hook must be byte-identical to
+    // the same seed played with no hook at all. That's what makes the
+    // hook safe to add without touching every other test in this file.
+    // Explicit seed on both calls — fixture.matchId (the default seed)
+    // is a freshly random uuid per InMemoryCompetitionRepository
+    // instance, so two independently created `deps` would otherwise
+    // simulate two genuinely different matches regardless of this test.
+    const seed = "halftime-hook-noop-seed";
+    const withoutHook = makeDeps();
+    await createPlayerProfile(withoutHook, profileInput());
+    const now = new Date("2026-08-14T00:00:00Z");
+    const baseline = await playCareerMatch(withoutHook, { discordId: "discord-1", now, seed });
+
+    const withHook = makeDeps();
+    await createPlayerProfile(withHook, profileInput());
+    let callCount = 0;
+    let capturedContext: { homeScore: number; awayScore: number; playerSide: string; clubName: string; opponentName: string } | undefined;
+    const interactive = await playCareerMatch(
+      {
+        ...withHook,
+        resolveHalftimeTactic: async (context) => {
+          callCount += 1;
+          capturedContext = context;
+          return "BALANCED";
+        },
+      },
+      { discordId: "discord-1", now, seed },
+    );
+
+    // Not a full `.result` deep-equal: team/player ids come from
+    // InMemoryCareerRepository's own randomUUID() calls, which are
+    // instance-specific and unrelated to the shared match seed — two
+    // independently created `deps` never share those regardless of
+    // seed. What the seed DOES pin down deterministically is the
+    // simulated dynamics themselves: score and the event type/minute
+    // sequence.
+    expect(callCount).toBe(1);
+    expect(capturedContext?.playerSide).toBe(baseline.playerSide);
+    expect(capturedContext?.clubName).toBe(baseline.clubName);
+    expect(capturedContext?.opponentName).toBe(baseline.opponentName);
+    expect(interactive.result.homeScore).toBe(baseline.result.homeScore);
+    expect(interactive.result.awayScore).toBe(baseline.result.awayScore);
+    expect(interactive.result.events.map((e) => `${e.minute}:${e.type}`)).toEqual(
+      baseline.result.events.map((e) => `${e.minute}:${e.type}`),
+    );
+    expect(interactive.coinsEarned).toBe(baseline.coinsEarned);
+  });
+
+  it("interactive halftime: OFFENSIVE actually steers the second half to a different result than BALANCED", async () => {
+    const seed = "halftime-offensive-vs-balanced-seed";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const balancedDeps = makeDeps();
+    await createPlayerProfile(balancedDeps, profileInput());
+    const balanced = await playCareerMatch(
+      { ...balancedDeps, resolveHalftimeTactic: async () => "BALANCED" },
+      { discordId: "discord-1", now, seed },
+    );
+
+    const offensiveDeps = makeDeps();
+    await createPlayerProfile(offensiveDeps, profileInput());
+    const offensive = await playCareerMatch(
+      { ...offensiveDeps, resolveHalftimeTactic: async () => "OFFENSIVE" },
+      { discordId: "discord-1", now, seed },
+    );
+
+    // Same explicit seed on both, so the first half is identical — only
+    // the tactic differs, and that alone is enough to change the second
+    // half's simulated minutes.
+    expect(offensive.result.events).not.toEqual(balanced.result.events);
+  });
 });

@@ -1017,3 +1017,45 @@ mexer em arquitetura ou nos fluxos de jogo já testados.
   arquitetura bem maior (a partida hoje é simulada inteira de uma vez,
   não pausa em pontos de decisão) e foi deliberadamente deixada fora
   deste follow-up.
+
+## Partida interativa: decisão tática no intervalo (follow-up)
+
+Primeira fatia do "gameplay ao vivo" adiado no follow-up de polish
+visual acima — pedido explícito do mesmo usuário depois de ver o bot
+rodando. Fatia mínima deliberada: um único ponto de decisão real por
+partida (o intervalo), não decisão a cada lance.
+
+- **`/jogar-carreira`** agora simula o primeiro tempo, mostra o placar
+  parcial num card com 3 botões (⚔️ Ofensivo / ⚖️ Equilibrado / 🛡️
+  Defensivo), espera até 5 minutos pelo clique (cai pra Equilibrado se
+  ninguém responder), aplica a escolha e simula o segundo tempo — tudo
+  dentro da mesma resposta de comando, sem tabela nova no banco (ver
+  ADR 0001, adenda "Partida interativa", para o porquê de não persistir
+  o estado pausado).
+- A escolha reaproveita o mecanismo de `TeamStyle` que já existia desde
+  a Fase 3 (`game/ai/decide.ts`) — nenhuma lógica de simulação nova,
+  só um mapeamento (`game/domain/tactics.ts`) entre a escolha e o
+  estilo já suportado. Equilibrado é literalmente um no-op: produz o
+  mesmo resultado que o comportamento antigo, sem hook nenhum.
+- **Primeiro uso de botões no bot** — até aqui era só slash command
+  request/response. Não mudou nada em `discord/client.ts`; o clique é
+  capturado por um collector escopado à própria mensagem do intervalo.
+- **`simulateMatch` foi dividido em `simulateFirstHalf`/
+  `simulateSecondHalf`, permanecendo como composição das duas** —
+  byte-idêntico a antes da divisão pro mesmo seed, confirmado pelos 9
+  testes de determinismo originais sem nenhuma alteração.
+
+**O que foi validado de verdade:** 5 testes novos (378 no total) — 3 no
+motor (composição idêntica à versão monolítica, corte exato no
+intervalo, mutar o estilo entre as metades muda o resultado de forma
+determinística e não estatística) e 2 no serviço (hook chamado uma vez
+com os dados certos e Equilibrado é um no-op de verdade; Ofensivo
+produz uma sequência de eventos diferente). Card do intervalo
+renderizado com dados de exemplo antes de integrar. `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (378 passando) e `npm run build` —
+todos limpos.
+
+**O que fica pra depois:** decisão a cada lance individual (pênalti,
+substituição pontual), notificação separada quando o timeout de 5
+minutos é atingido, e persistência do estado pausado entre reinícios do
+processo (ver Risco #50 em RISK_REGISTER.md).

@@ -11,8 +11,9 @@ import { grantMatchReward } from "../../economy/services/grantMatchReward.js";
 import { buildSquadFromProfile, realPlayerMatchId } from "../../game/domain/buildSquadFromProfile.js";
 import { generateSquad } from "../../game/domain/generateSquad.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
+import { styleForHalftimeTactic, type HalftimeTacticChoice } from "../../game/domain/tactics.js";
 import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
-import { simulateMatch } from "../../game/engine/simulateMatch.js";
+import { simulateFirstHalf, simulateSecondHalf } from "../../game/engine/simulateMatch.js";
 import type { MatchRepository } from "../../game/ports/matchRepository.js";
 import type { RecordCategory } from "../../global/domain/records.js";
 import type { RecordRepository } from "../../global/ports/recordRepository.js";
@@ -36,6 +37,18 @@ function randomStyle(rng: Rng): TeamStyle {
   );
 }
 
+export interface HalftimeContext {
+  homeScore: number;
+  awayScore: number;
+  /** Which side the real player is on — the tactical choice only ever changes the PLAYER's team style, never the opponent's. */
+  playerSide: Side;
+  clubName: string;
+  opponentName: string;
+}
+
+/** Resolves a halftime tactical decision for an interactive match — see discord/commands/jogarCarreira.ts for the Discord-button adapter (sends the halftime card, awaits a click, falls back to BALANCED on timeout). */
+export type ResolveHalftimeTactic = (context: HalftimeContext) => Promise<HalftimeTacticChoice>;
+
 export interface PlayCareerMatchDeps {
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
@@ -47,6 +60,16 @@ export interface PlayCareerMatchDeps {
   recordRepository: RecordRepository;
   achievementRepository: AchievementRepository;
   events: EventBus;
+  /**
+   * Optional hook for an interactive halftime tactical decision. Called
+   * once, right after the first half, with the score at the break — must
+   * resolve to a choice, which is then applied to the player's squad
+   * style for the second half only. Omitted (the default, and every
+   * existing caller/test) preserves the exact old single-pass
+   * simulation: the player's squad stays at its default TACTICAL style
+   * the whole match, byte-identical to before this hook existed.
+   */
+  resolveHalftimeTactic?: ResolveHalftimeTactic;
 }
 
 export interface PlayCareerMatchInput {
@@ -140,7 +163,18 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
   const playerSide: Side = isPlayerHome ? "home" : "away";
 
   deps.events.emit("MATCH_STARTED", { matchId: fixture.matchId });
-  const result = simulateMatch(home, away, { seed });
+  const firstHalf = simulateFirstHalf(home, away, { seed });
+  if (deps.resolveHalftimeTactic) {
+    const choice = await deps.resolveHalftimeTactic({
+      homeScore: firstHalf.state.homeScore,
+      awayScore: firstHalf.state.awayScore,
+      playerSide,
+      clubName: club.name,
+      opponentName,
+    });
+    firstHalf.state[playerSide].squad.style = styleForHalftimeTactic(choice);
+  }
+  const result = simulateSecondHalf(firstHalf);
   deps.events.emit("MATCH_FINISHED", { matchId: fixture.matchId, homeScore: result.homeScore, awayScore: result.awayScore });
 
   const matchPlayerInputId = realPlayerMatchId(player);

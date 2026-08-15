@@ -1,5 +1,5 @@
-import { createRng } from "../domain/rng.js";
-import type { TeamRuntimeState } from "../domain/state.js";
+import { createRng, type Rng } from "../domain/rng.js";
+import type { MatchSimState, TeamRuntimeState } from "../domain/state.js";
 import { validateSquad } from "../domain/validateSquad.js";
 import type {
   MatchOptions,
@@ -74,15 +74,23 @@ function computeRating(input: {
 }
 
 /**
- * Runs a full, deterministic match simulation. Pure function: no I/O, no
- * clock, no randomness beyond what `options.seed` controls — the same
- * inputs always produce the exact same `MatchResult`.
+ * A match paused at halftime — everything `simulateSecondHalf` needs to
+ * finish the simulation. `state` is intentionally exposed (not just an
+ * opaque handle): a caller running an *interactive* match can reach in
+ * and mutate `state[side].squad.style` between the two calls — e.g. to
+ * apply a player's halftime tactical choice — since resolvePhase reads
+ * `squad.style` fresh every minute (see game/ai/decide.ts). Nothing about
+ * `simulateFirstHalf` itself performs that mutation; it's purely a
+ * resumable checkpoint.
  */
-export function simulateMatch(
-  home: MatchSquad,
-  away: MatchSquad,
-  options: MatchOptions,
-): MatchResult {
+export interface FirstHalfHandle {
+  state: MatchSimState;
+  rng: Rng;
+  events: SimMatchEvent[];
+  seed: string;
+}
+
+function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions): FirstHalfHandle {
   validateSquad(home);
   validateSquad(away);
 
@@ -99,6 +107,14 @@ export function simulateMatch(
   events.push({ minute: HALFTIME_MINUTE, type: "HALFTIME", side: null, playerId: null });
   applyHalftimeRecovery(state.home);
   applyHalftimeRecovery(state.away);
+
+  return { state, rng, events, seed: options.seed };
+}
+
+function runSecondHalf(firstHalf: FirstHalfHandle): MatchResult {
+  const { state, rng, events, seed } = firstHalf;
+  const home = state.home.squad;
+  const away = state.away.squad;
 
   for (let minute = HALFTIME_MINUTE + 1; minute <= REGULATION_MINUTES; minute++) {
     events.push(...resolvePhase(state, minute, rng));
@@ -126,7 +142,7 @@ export function simulateMatch(
       : Math.round((state.possessionMinutes.home / totalPossessionMinutes) * 100);
 
   return {
-    seed: options.seed,
+    seed,
     homeTeamId: home.teamId,
     awayTeamId: away.teamId,
     homeScore: state.homeScore,
@@ -139,4 +155,44 @@ export function simulateMatch(
     ],
     log: buildLog(events, home, away),
   };
+}
+
+/**
+ * Runs the match up to and including halftime recovery, then returns a
+ * resumable handle instead of the final result — the entry point for an
+ * *interactive* match that pauses for a real decision (see
+ * career/services/playCareerMatch.ts's `resolveHalftimeTactic`). Still
+ * fully deterministic: the same seed/squads always produce the same
+ * first-half events, independent of whatever happens after the pause.
+ */
+export function simulateFirstHalf(
+  home: MatchSquad,
+  away: MatchSquad,
+  options: MatchOptions,
+): FirstHalfHandle {
+  return runFirstHalf(home, away, options);
+}
+
+/** Resumes a `FirstHalfHandle` and finishes the match. See simulateFirstHalf's doc comment for the interactive-mutation contract. */
+export function simulateSecondHalf(firstHalf: FirstHalfHandle): MatchResult {
+  return runSecondHalf(firstHalf);
+}
+
+/**
+ * Runs a full, deterministic match simulation in one call — the
+ * non-interactive path used by every caller that doesn't need a
+ * halftime pause (friendlies, duels, and career matches with no
+ * `resolveHalftimeTactic` hook). Pure function: no I/O, no clock, no
+ * randomness beyond what `options.seed` controls — the same inputs
+ * always produce the exact same `MatchResult`. Literally just
+ * simulateFirstHalf immediately followed by simulateSecondHalf with no
+ * mutation in between, so this composition is byte-for-byte identical
+ * to the pre-split implementation for the same seed.
+ */
+export function simulateMatch(
+  home: MatchSquad,
+  away: MatchSquad,
+  options: MatchOptions,
+): MatchResult {
+  return runSecondHalf(runFirstHalf(home, away, options));
 }

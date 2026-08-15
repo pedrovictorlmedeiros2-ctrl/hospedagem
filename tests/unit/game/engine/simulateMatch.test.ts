@@ -3,7 +3,7 @@ import { generateSquad } from "../../../../src/game/domain/generateSquad.js";
 import { createRng } from "../../../../src/game/domain/rng.js";
 import type { MatchSquad, SimMatchEventType } from "../../../../src/game/domain/types.js";
 import { InvalidSquadError } from "../../../../src/game/domain/validateSquad.js";
-import { simulateMatch } from "../../../../src/game/engine/simulateMatch.js";
+import { simulateFirstHalf, simulateMatch, simulateSecondHalf } from "../../../../src/game/engine/simulateMatch.js";
 
 function squad(teamId: string, teamName: string, avgOverall: number, seed: string): MatchSquad {
   return generateSquad({ teamId, teamName, style: "TACTICAL", avgOverall, rng: createRng(seed) });
@@ -61,6 +61,54 @@ describe("simulateMatch — structure", () => {
     away.players = away.players.slice(0, 5);
 
     expect(() => simulateMatch(home, away, { seed: "invalid-seed" })).toThrow(InvalidSquadError);
+  });
+});
+
+describe("simulateFirstHalf / simulateSecondHalf — the split powering interactive matches", () => {
+  it("composes to the exact same result as the monolithic simulateMatch, for the same seed", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const monolithic = simulateMatch(home, away, { seed: "split-composition-seed" });
+    const split = simulateSecondHalf(simulateFirstHalf(home, away, { seed: "split-composition-seed" }));
+
+    expect(split).toEqual(monolithic);
+  });
+
+  it("simulateFirstHalf stops exactly at halftime — no events past minute 45", () => {
+    const home = squad("home", "Casa", 60, "home-seed");
+    const away = squad("away", "Visitante", 60, "away-seed");
+
+    const firstHalf = simulateFirstHalf(home, away, { seed: "first-half-only-seed" });
+
+    expect(firstHalf.events.at(-1)?.type).toBe("HALFTIME");
+    for (const event of firstHalf.events) {
+      expect(event.minute).toBeLessThanOrEqual(45);
+    }
+  });
+
+  it("mutating state[side].squad.style between the two halves actually changes the second half's outcome — it's a real lever, not a field that gets set and silently ignored", () => {
+    // Deterministic, not statistical: two fresh first halves from the
+    // IDENTICAL seed (so both start the second half from the exact same
+    // state and RNG position), diverging only in which style is applied
+    // to home's squad before resuming. Different AI action weights
+    // (game/ai/decide.ts's ATTACK_STYLE_MULTIPLIERS/DEFENSE_STYLE_MULTIPLIERS)
+    // make different decisions consume the shared RNG differently, so the
+    // two event sequences reliably diverge — this doesn't assert which
+    // style produces "better" results, just that changing it does
+    // something real to the second half.
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const aggressive = simulateFirstHalf(home, away, { seed: "style-lever-seed" });
+    aggressive.state.home.squad.style = "AGGRESSIVE";
+    const aggressiveResult = simulateSecondHalf(aggressive);
+
+    const defensive = simulateFirstHalf(home, away, { seed: "style-lever-seed" });
+    defensive.state.home.squad.style = "DEFENSIVE";
+    const defensiveResult = simulateSecondHalf(defensive);
+
+    expect(aggressiveResult.events).not.toEqual(defensiveResult.events);
   });
 });
 
