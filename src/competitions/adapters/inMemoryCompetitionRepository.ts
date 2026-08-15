@@ -21,7 +21,7 @@ interface TournamentState {
 /** In-memory adapter for tests and local iteration without a real Postgres instance. NOT wired into the running bot. */
 export class InMemoryCompetitionRepository implements CompetitionRepository {
   // Keyed by competitionName+seasonId, not competitionName alone — the
-  // same competition (e.g. "Liga de Acesso — BR") legitimately gets a new
+  // same competition (e.g. "Campeonato Nacional 🇧🇷 Série A") legitimately gets a new
   // Tournament every season (see career/domain/season.ts and
   // playCareerMatch.ts's rollover). Mirrors the real uniqueness rule
   // Postgres enforces via Tournament's [competitionId, seasonId] key.

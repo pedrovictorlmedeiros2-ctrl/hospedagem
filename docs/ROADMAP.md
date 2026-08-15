@@ -1155,3 +1155,29 @@ botões pra comandos com parâmetro via select menu/modal (`/treinar`
 seria o candidato mais óbvio), e um botão "⬅️ Voltar ao menu" nos
 resultados (hoje cada ação abre uma resposta nova, não substitui o
 `/menu` original — funciona bem, mas não fecha o ciclo de navegação).
+
+## Eventos de futebol (follow-up, parte 1/3): nome de campeonato estilo real
+
+Pedido: "e os eventos de futebol?" — depois de esclarecer, virou três
+pedidos (nome de competição mais realista, notificação de eventos ao
+vivo, copa mata-mata). Confirmado com o usuário: clima/formato de
+competição real, mas **sem nome de clube ou liga real** — mesma
+decisão consciente já documentada em `clubNaming.ts` desde a Fase 5
+("evita qualquer coisa perto do nome de um clube real conhecido"),
+agora estendida ao nome da própria liga.
+
+- **`leagueNameFor(nationality)`** trocou `"Liga de Acesso — BR"` por
+  `"Campeonato Nacional 🇧🇷 Série A"` — genérico/descritivo, não o nome
+  de nenhuma competição real específica. A bandeira carrega a
+  identidade por nacionalidade em vez de um nome de país por extenso —
+  evita manter um mapa código→demônimo pras ~109 nacionalidades em
+  `KNOWN_NATIONALITIES`, e já é o mesmo padrão usado em `/criar-perfil`
+  (`profileCard.ts`) pra mostrar nacionalidade.
+- `countryCodeToFlagEmoji` (antes só em `profileCard.ts`) virou
+  `shared/flagEmoji.ts` — reaproveitado por `ensureLeagueTeams.ts` sem
+  duplicar a lógica.
+- Nenhuma mudança de clube — os 6 rivais e o clube inicial continuam
+  com os nomes fictícios de sempre (`clubNaming.ts`, sem alteração).
+- Nenhum teste depende da string antiga — os 383 testes passaram sem
+  alteração. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` e
+  `npm run build` — todos limpos.

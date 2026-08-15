@@ -7,7 +7,7 @@ export interface GetOrCreateSeasonLeagueInput {
   seasonId: string;
   /**
    * Unique per league — today this is one league per starter-club region
-   * (see career/services/playCareerMatch.ts), e.g. "Liga de Acesso — BR".
+   * (see career/services/playCareerMatch.ts), e.g. "Campeonato Nacional 🇧🇷 Série A".
    * The pair (competitionName, seasonId) is only ever generated once;
    * calling again with the same pair is a cheap idempotent read, never a
    * regeneration (mid-season roster changes are out of scope — see ADR

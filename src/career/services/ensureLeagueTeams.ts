@@ -1,5 +1,6 @@
 import type { CompetitionRepository, LeagueTeamInput } from "../../competitions/ports/competitionRepository.js";
 import { createRng, randomInt, type Rng } from "../../game/domain/rng.js";
+import { countryCodeToFlagEmoji } from "../../shared/flagEmoji.js";
 import { generateClubName, generateDistinctClubName, RIVAL_CLUB_KEYS, starterClubKeyFor } from "../domain/clubNaming.js";
 import type { CareerRepository, ClubRecord, SeasonRecord } from "../ports/careerRepository.js";
 
@@ -20,8 +21,17 @@ function pickFrom<T>(rng: Rng, options: readonly T[]): T {
   return value;
 }
 
+/**
+ * Deliberately generic/descriptive, not a real competition's actual
+ * name or brand — mirrors the "purely fictional club names" policy
+ * already established in clubNaming.ts, applied to the league itself.
+ * The flag carries the per-nationality identity instead of a country
+ * name/demonym, matching how the rest of the UI already identifies a
+ * nationality (see profileCard.ts) without a hand-maintained name map
+ * for all of KNOWN_NATIONALITIES (player/domain/validators.ts).
+ */
 export function leagueNameFor(nationality: string): string {
-  return `Liga de Acesso — ${nationality}`;
+  return `Campeonato Nacional ${countryCodeToFlagEmoji(nationality)} Série A`;
 }
 
 export interface RivalEntry {
@@ -57,8 +67,9 @@ export async function ensureRivalTeams(careerRepository: CareerRepository, seaso
  * same pattern as ensureRivalTeams.
  *
  * Deliberately independent of any specific player's CURRENT club: league
- * membership (which 7 clubs make up "Liga de Acesso — <nationality>") is
- * fixed forever once generated, regardless of who has since transferred
+ * membership (which 7 clubs make up that nationality's Campeonato
+ * Nacional — see leagueNameFor) is fixed forever once generated,
+ * regardless of who has since transferred
  * away from the starter club or into one of the rivals. Callers that need
  * "the club a specific player currently represents" should use
  * `career.currentClubId` (see ensureCareerStarted.ts), not this.
