@@ -32,6 +32,8 @@ export interface CareerMatchResultCardExtra {
   timedOutMinutes?: number[];
   /** Minutes where the player had an interactive penalty but didn't pick a corner/power in time — see jogarCarreira.ts's makeResolvePenaltyDecision. */
   penaltyTimeoutMinutes?: number[];
+  /** Minutes where the player had an interactive substitution but didn't pick a replacement in time — see jogarCarreira.ts's makeResolveSubstitutionDecision. */
+  substitutionTimeoutMinutes?: number[];
 }
 
 export function buildCareerMatchResultCard(match: PlayCareerMatchOutput, extra: CareerMatchResultCardExtra = {}): ContainerBuilder {
@@ -71,6 +73,9 @@ export function buildCareerMatchResultCard(match: PlayCareerMatchOutput, extra: 
   }
   for (const minute of extra.penaltyTimeoutMinutes ?? []) {
     footerLines.push(`⏱️ Sem resposta a tempo no pênalti aos ${minute}' — a cobrança saiu no meio, colocada.`);
+  }
+  for (const minute of extra.substitutionTimeoutMinutes ?? []) {
+    footerLines.push(`⏱️ Sem resposta a tempo na substituição aos ${minute}' — entrou o reserva mais fresco.`);
   }
   if (match.seasonRolledOver) {
     footerLines.push(

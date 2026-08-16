@@ -44,6 +44,20 @@ export interface PendingPenalty {
   gk: MatchPlayerInput | null;
 }
 
+/**
+ * A stamina-driven substitution identified while `MatchOptions.pauseOnSubstitution`
+ * is true, with the actual swap deferred until `resumePendingSubstitution`
+ * (simulateMatch.ts) is called — `outgoing`/`benchOptions` are captured
+ * here (not re-looked-up later) for the same reason as PendingPenalty's
+ * `taker`/`gk`.
+ */
+export interface PendingSubstitution {
+  minute: number;
+  side: Side;
+  outgoing: MatchPlayerInput;
+  benchOptions: MatchPlayerInput[];
+}
+
 export interface MatchSimState {
   home: TeamRuntimeState;
   away: TeamRuntimeState;
@@ -55,4 +69,6 @@ export interface MatchSimState {
   possessionMinutes: { home: number; away: number };
   /** Set by resolvePhase when a penalty needs an external decision before it can be resolved — see PendingPenalty. */
   pendingPenalty?: PendingPenalty;
+  /** Set by resolvePhase when a stamina substitution needs an external decision before it can be resolved — see PendingSubstitution. Mutually exclusive with pendingPenalty within the same minute — see resolvePhase.ts. */
+  pendingSubstitution?: PendingSubstitution;
 }

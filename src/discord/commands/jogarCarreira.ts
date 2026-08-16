@@ -4,6 +4,8 @@ import type {
   PenaltyDecisionContext,
   ResolveMatchTactic,
   ResolvePenaltyDecision,
+  ResolveSubstitutionDecision,
+  SubstitutionDecisionContext,
 } from "../../career/services/playCareerMatch.js";
 import { playCareerMatch } from "../../career/services/playCareerMatch.js";
 import type { PenaltyChoice } from "../../game/domain/penaltyDecision.js";
@@ -11,12 +13,19 @@ import type { MatchTacticChoice } from "../../game/domain/tactics.js";
 import { buildCareerMatchResultCard } from "../ui/careerMatchResultCard.js";
 import { MATCH_TACTIC_BUTTON_PREFIX, buildMatchTacticCard, type MatchTacticCardCopy } from "../ui/matchTacticCard.js";
 import { PENALTY_BUTTON_PREFIX, buildPenaltyDecisionCard, parsePenaltyButtonCustomId } from "../ui/penaltyDecisionCard.js";
+import {
+  SUBSTITUTION_BUTTON_PREFIX,
+  buildSubstitutionDecisionCard,
+  parseSubstitutionButtonCustomId,
+} from "../ui/substitutionDecisionCard.js";
 import type { Command, CommandContext } from "./types.js";
 
 /** No response in 5 minutes defaults to BALANCED (see buildMatchTacticCard's footer note) rather than leaving the match stuck mid-simulation forever. */
 const TACTIC_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 /** Same timeout budget as the tactic decisions — see buildPenaltyDecisionCard's footer note for the default (center, placed). */
 const PENALTY_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
+/** Same timeout budget as the other decisions — see buildSubstitutionDecisionCard's footer note for the default (freshest same-position bench player). */
+const SUBSTITUTION_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * One factory shared by both pause points (halftime, late-game) — only the
@@ -88,12 +97,48 @@ function makeResolvePenaltyDecision(
   };
 }
 
+/**
+ * Same pause/wait/timeout shape as makeResolvePenaltyDecision, but for a
+ * stamina substitution — fires at whatever minute a tired player is found
+ * on the pitch. `substitutionTimeoutMinutes` mirrors `penaltyTimeoutMinutes`
+ * for its own footer note (see careerMatchResultCard.ts). On timeout returns
+ * "" — an id that never matches a real bench player, which
+ * resumePendingSubstitution (game/engine/simulateMatch.ts) treats the same
+ * as an omitted choice: falls back to pickReplacement's automatic pick
+ * (freshest same-position bench player), not necessarily benchOptions[0].
+ */
+function makeResolveSubstitutionDecision(
+  interaction: RepliableInteraction,
+  logger: CommandContext["logger"],
+  substitutionTimeoutMinutes: number[],
+): ResolveSubstitutionDecision {
+  return async (context: SubstitutionDecisionContext): Promise<string> => {
+    const card = buildSubstitutionDecisionCard(context);
+    const message = await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+
+    try {
+      const buttonInteraction = await message.awaitMessageComponent({
+        componentType: ComponentType.Button,
+        filter: (i) => i.user.id === interaction.user.id && i.customId.startsWith(SUBSTITUTION_BUTTON_PREFIX),
+        time: SUBSTITUTION_DECISION_TIMEOUT_MS,
+      });
+      await buttonInteraction.deferUpdate();
+      return parseSubstitutionButtonCustomId(buttonInteraction.customId);
+    } catch {
+      logger.info({ discordId: interaction.user.id, minute: context.minute }, "substitution decision timed out, defaulting to automatic pick");
+      substitutionTimeoutMinutes.push(context.minute);
+      return "";
+    }
+  };
+}
+
 /** Shared by the slash command and the /menu button (see discord/menuActions.ts) — identical result either way, including the two interactive tactic pauses. */
 export async function renderJogarCarreira(interaction: RepliableInteraction, ctx: CommandContext): Promise<void> {
   await interaction.deferReply();
 
   const timedOutMinutes: number[] = [];
   const penaltyTimeoutMinutes: number[] = [];
+  const substitutionTimeoutMinutes: number[] = [];
   const match = await playCareerMatch(
     {
       userRepository: ctx.userRepository,
@@ -119,11 +164,12 @@ export async function renderJogarCarreira(interaction: RepliableInteraction, ctx
         timedOutMinutes,
       ),
       resolvePenaltyDecision: makeResolvePenaltyDecision(interaction, ctx.logger, penaltyTimeoutMinutes),
+      resolveSubstitutionDecision: makeResolveSubstitutionDecision(interaction, ctx.logger, substitutionTimeoutMinutes),
     },
     { discordId: interaction.user.id },
   );
 
-  const card = buildCareerMatchResultCard(match, { timedOutMinutes, penaltyTimeoutMinutes });
+  const card = buildCareerMatchResultCard(match, { timedOutMinutes, penaltyTimeoutMinutes, substitutionTimeoutMinutes });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 
   ctx.logger.info(

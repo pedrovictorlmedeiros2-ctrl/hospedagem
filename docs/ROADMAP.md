@@ -1489,3 +1489,64 @@ todos limpos.
 pedido original) — ficou de fora desta leva por escopo; pênalti nos
 últimos 20 minutos/acréscimos continua não-interativo (ver corte de
 escopo acima).
+
+## Substituição interativa: escolha de quem entra, + revisão de bugs/cortes pedida pelo usuário
+
+Pedido: "faz a substituição interativa também, e também verifica se a
+bugs/cortes em algumas funções etc" — a outra metade do pedido original
+de "mais decisões ao vivo na partida" (deixada de fora da leva do
+pênalti por escopo), mais um pedido explícito de revisão de qualidade
+do código recente.
+
+- **Mesma arquitetura do pênalti, aplicada ao cansaço**:
+  `MatchSimState.pendingSubstitution` captura o jogador que sai e as
+  opções de banco quando `pauseOnSubstitution` está ligado, e
+  `resumePendingSubstitution` retoma com a escolha (ou sem escolha
+  nenhuma, caindo pro mesmo pick automático de sempre). `substitution.ts`
+  foi refatorado (não reescrito) pra expor `pickReplacement` e um novo
+  `findTiredPlayer` — comportamento de quem já usava o módulo
+  (substituição por lesão, cartão vermelho) não mudou.
+- **Nenhum seed antigo mudou de resultado** — mesma confirmação de
+  sempre (414 testes anteriores passando sem tocar em nenhum).
+- **Achado real da revisão de bugs pedida:** o gatilho de substituição
+  por cansaço (`TIRED_THRESHOLD = 35`) quase nunca é alcançado sob as
+  constantes de dreno de estamina atuais — confirmado simulando milhares
+  de partidas (0 pausas até o minuto 70; estamina mínima observada ao
+  final de 500 partidas completas foi 63, nunca perto de 35). Isso é
+  pré-existente ao mecanismo automático (não uma regressão desta leva),
+  mas na prática torna tanto a substituição automática por cansaço
+  quanto a nova versão interativa quase invisíveis em partidas normais.
+  Documentado como Risco #61, não corrigido — mexer nas constantes de
+  dreno é um ajuste de balanceamento "no olho" fora do que foi pedido.
+  Um segundo achado (Risco #62): o pick automático de reserva pode
+  colocar o goleiro reserva jogando de linha quando não há cobertura na
+  mesma posição no banco — também pré-existente, também documentado sem
+  correção nesta leva. Um terceiro achado (Risco #63) apareceu durante a
+  própria validação DESTA leva, não era pré-existente: a primeira versão
+  da guarda de mútua exclusão entre pênalti/substituição pendentes
+  cobria os dois ramos (interativo e automático) quando só o interativo
+  precisava dela, o que faria o ramo automático pular silenciosamente a
+  checagem de cansaço em qualquer minuto com um pênalti pendente, mesmo
+  pra quem nunca ligou a substituição interativa — corrigido antes do
+  commit, com um teste de regressão que comprova o bug revertendo a
+  correção temporariamente antes de restaurá-la.
+- **`/jogar-carreira` ganhou um quarto tipo de card**:
+  `discord/ui/substitutionDecisionCard.ts`, um botão por reserva
+  disponível. Sem resposta em 5 minutos, entra o reserva mais fresco da
+  mesma posição — mesmo padrão de timeout já usado pros outros três
+  cards interativos.
+
+**O que foi validado de verdade:** como o gatilho é quase inatingível
+por seed (ver achado acima), os testes do motor forçam a estamina
+diretamente no `MatchHandle.state` exposto (o mesmo ponto de mutação já
+documentado como legítimo pra controle de teste interativo) em vez de
+buscar por força bruta — 9 testes novos no motor (incluindo a regressão
+do Risco #63), 1 no serviço. `npx tsc --noEmit`, `npx eslint .`,
+`npx vitest run` (423 passando) e `npm run build` — todos limpos.
+
+**O que fica pra depois:** recalibrar as constantes de dreno de estamina
+(ou o `TIRED_THRESHOLD`) pra que a substituição por cansaço realmente
+aconteça em partidas normais — decisão de balanceamento, não implementada
+sem pedido explícito (ver Risco #61); consertar o fallback de reserva
+pra nunca escalar um goleiro de linha (Risco #62); pênalti/substituição
+nos últimos 20 minutos/acréscimos continuam não-interativos.

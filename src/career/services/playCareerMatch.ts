@@ -13,10 +13,11 @@ import { generateSquad } from "../../game/domain/generateSquad.js";
 import type { PenaltyChoice } from "../../game/domain/penaltyDecision.js";
 import { createRng, weightedPick, type Rng } from "../../game/domain/rng.js";
 import { styleForMatchTactic, type MatchTacticChoice } from "../../game/domain/tactics.js";
-import type { MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
+import type { MatchPlayerInput, MatchResult, Side, TeamStyle } from "../../game/domain/types.js";
 import {
   resumeFirstHalf,
   resumePendingPenalty,
+  resumePendingSubstitution,
   simulateFirstHalf,
   simulateSecondHalf,
   simulateUntilMinute,
@@ -75,6 +76,27 @@ export interface PenaltyDecisionContext {
 /** Resolves the real player's own penalty (corner + power) — never called for the opponent's penalty, which always resolves automatically. See PlayCareerMatchDeps.resolvePenaltyDecision. */
 export type ResolvePenaltyDecision = (context: PenaltyDecisionContext) => Promise<PenaltyChoice>;
 
+export interface SubstitutionBenchOption {
+  id: string;
+  name: string;
+  position: MatchPlayerInput["position"];
+}
+
+export interface SubstitutionDecisionContext {
+  minute: number;
+  outgoingName: string;
+  outgoingPosition: MatchPlayerInput["position"];
+  benchOptions: SubstitutionBenchOption[];
+  playerSide: Side;
+  clubName: string;
+  opponentName: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+/** Resolves the real player's own stamina substitution (which bench player comes on) — never called for the opponent's substitution, which always resolves automatically. Returns the chosen bench player's id. See PlayCareerMatchDeps.resolveSubstitutionDecision. */
+export type ResolveSubstitutionDecision = (context: SubstitutionDecisionContext) => Promise<string>;
+
 export interface PlayCareerMatchDeps {
   userRepository: UserRepository;
   playerRepository: PlayerRepository;
@@ -114,6 +136,18 @@ export interface PlayCareerMatchDeps {
    * comment for why the final stretch (71'+) never pauses.
    */
   resolvePenaltyDecision?: ResolvePenaltyDecision;
+  /**
+   * Optional hook for an interactive stamina substitution — which bench
+   * player comes on — fired only when the pending substitution is the
+   * PLAYER's own side (an opponent's substitution always auto-resolves,
+   * exactly like today). Omitted (the default) means every stamina
+   * substitution resolves automatically (freshest same-position bench
+   * player), byte-identical to before this hook existed. Only takes
+   * effect for minutes 1-70 — see game/engine/simulateMatch.ts's
+   * runSecondHalf doc comment for why the final stretch (71'+) never
+   * pauses.
+   */
+  resolveSubstitutionDecision?: ResolveSubstitutionDecision;
 }
 
 export interface PlayCareerMatchInput {
@@ -146,35 +180,58 @@ export interface PlayCareerMatchOutput {
 }
 
 /**
- * Drains every pending penalty on `handle` before returning — asking
- * `deps.resolvePenaltyDecision` only when it's the PLAYER's own side
- * (an opponent's penalty always auto-resolves with no choice, same as
- * before this hook existed). `resume` continues toward whichever
- * boundary the caller was originally heading to (resumeFirstHalf for
- * the 1-45 stretch, `simulateUntilMinute(h, 70)` for 46-70) — a second
- * penalty before that boundary just means looping again.
+ * Drains every pending penalty AND every pending substitution on `handle`
+ * before returning — asking the matching `deps.resolve*Decision` hook
+ * only when it's the PLAYER's own side (an opponent's penalty or
+ * substitution always auto-resolves with no choice, same as before either
+ * hook existed). `pendingPenalty`/`pendingSubstitution` are mutually
+ * exclusive within a single minute (see resolvePhase.ts), but not across
+ * minutes, so this loops on EITHER being set rather than draining them
+ * separately. `resume` continues toward whichever boundary the caller was
+ * originally heading to (resumeFirstHalf for the 1-45 stretch,
+ * `simulateUntilMinute(h, 70)` for 46-70) — a second pending decision
+ * before that boundary just means looping again.
  */
-async function drainPendingPenalties(
+async function drainPendingDecisions(
   handle: MatchHandle,
   resume: (handle: MatchHandle) => MatchHandle,
-  deps: Pick<PlayCareerMatchDeps, "resolvePenaltyDecision">,
+  deps: Pick<PlayCareerMatchDeps, "resolvePenaltyDecision" | "resolveSubstitutionDecision">,
   context: { playerSide: Side; clubName: string; opponentName: string },
 ): Promise<MatchHandle> {
-  while (handle.state.pendingPenalty) {
-    const pending = handle.state.pendingPenalty;
-    let choice: PenaltyChoice | undefined;
-    if (pending.attackingSide === context.playerSide && deps.resolvePenaltyDecision) {
-      choice = await deps.resolvePenaltyDecision({
-        minute: pending.minute,
-        takerName: pending.taker.name,
-        playerSide: context.playerSide,
-        clubName: context.clubName,
-        opponentName: context.opponentName,
-        homeScore: handle.state.homeScore,
-        awayScore: handle.state.awayScore,
-      });
+  while (handle.state.pendingPenalty || handle.state.pendingSubstitution) {
+    if (handle.state.pendingPenalty) {
+      const pending = handle.state.pendingPenalty;
+      let choice: PenaltyChoice | undefined;
+      if (pending.attackingSide === context.playerSide && deps.resolvePenaltyDecision) {
+        choice = await deps.resolvePenaltyDecision({
+          minute: pending.minute,
+          takerName: pending.taker.name,
+          playerSide: context.playerSide,
+          clubName: context.clubName,
+          opponentName: context.opponentName,
+          homeScore: handle.state.homeScore,
+          awayScore: handle.state.awayScore,
+        });
+      }
+      handle = resumePendingPenalty(handle, choice);
+    } else if (handle.state.pendingSubstitution) {
+      const pending = handle.state.pendingSubstitution;
+      let replacementId: string | undefined;
+      if (pending.side === context.playerSide && deps.resolveSubstitutionDecision) {
+        replacementId = await deps.resolveSubstitutionDecision({
+          minute: pending.minute,
+          outgoingName: pending.outgoing.name,
+          outgoingPosition: pending.outgoing.position,
+          benchOptions: pending.benchOptions.map((p) => ({ id: p.id, name: p.name, position: p.position })),
+          playerSide: context.playerSide,
+          clubName: context.clubName,
+          opponentName: context.opponentName,
+          homeScore: handle.state.homeScore,
+          awayScore: handle.state.awayScore,
+        });
+      }
+      handle = resumePendingSubstitution(handle, replacementId);
     }
-    handle = resumePendingPenalty(handle, choice);
     handle = resume(handle);
   }
   return handle;
@@ -243,10 +300,15 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
 
   deps.events.emit("MATCH_STARTED", { matchId: fixture.matchId });
   const wantsPenaltyPause = !!deps.resolvePenaltyDecision;
-  const penaltyContext = { playerSide, clubName: club.name, opponentName };
+  const wantsSubstitutionPause = !!deps.resolveSubstitutionDecision;
+  const decisionContext = { playerSide, clubName: club.name, opponentName };
 
-  let handle = simulateFirstHalf(home, away, { seed, pauseOnPenalty: wantsPenaltyPause });
-  handle = await drainPendingPenalties(handle, resumeFirstHalf, deps, penaltyContext);
+  let handle = simulateFirstHalf(home, away, {
+    seed,
+    pauseOnPenalty: wantsPenaltyPause,
+    pauseOnSubstitution: wantsSubstitutionPause,
+  });
+  handle = await drainPendingDecisions(handle, resumeFirstHalf, deps, decisionContext);
   if (deps.resolveHalftimeTactic) {
     const choice = await deps.resolveHalftimeTactic({
       homeScore: handle.state.homeScore,
@@ -259,12 +321,12 @@ export async function playCareerMatch(deps: PlayCareerMatchDeps, input: PlayCare
     handle.state[playerSide].squad.style = styleForMatchTactic(choice);
   }
   // Also runs the 46-70 stretch through the pausable path (not just when
-  // resolveLateGameTactic is set) whenever the player has a penalty hook
-  // at all — otherwise a penalty in this window would only ever hit
-  // simulateSecondHalf's inline, non-interactive path.
-  if (deps.resolveLateGameTactic || wantsPenaltyPause) {
+  // resolveLateGameTactic is set) whenever the player has a penalty or
+  // substitution hook at all — otherwise a decision in this window would
+  // only ever hit simulateSecondHalf's inline, non-interactive path.
+  if (deps.resolveLateGameTactic || wantsPenaltyPause || wantsSubstitutionPause) {
     handle = simulateUntilMinute(handle, LATE_GAME_DECISION_MINUTE);
-    handle = await drainPendingPenalties(handle, (h) => simulateUntilMinute(h, LATE_GAME_DECISION_MINUTE), deps, penaltyContext);
+    handle = await drainPendingDecisions(handle, (h) => simulateUntilMinute(h, LATE_GAME_DECISION_MINUTE), deps, decisionContext);
     if (deps.resolveLateGameTactic) {
       const choice = await deps.resolveLateGameTactic({
         homeScore: handle.state.homeScore,

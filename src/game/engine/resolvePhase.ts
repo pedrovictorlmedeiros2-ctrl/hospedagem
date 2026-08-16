@@ -13,10 +13,10 @@ import {
   type Side,
   type SimMatchEvent,
 } from "../domain/types.js";
-import { getGoalkeeper } from "./players.js";
+import { getGoalkeeper, getPlayer } from "./players.js";
 import { type ActionOutcome, resolveAction, resolvePenalty } from "./resolveAction.js";
 import { drainStamina } from "./stamina.js";
-import { maybeSubstituteTired, sendOff, substituteInjured } from "./substitution.js";
+import { findTiredPlayer, maybeSubstituteTired, sendOff, substituteInjured } from "./substitution.js";
 
 function oppositeSide(side: Side): Side {
   return side === "home" ? "away" : "home";
@@ -216,8 +216,16 @@ function applyOutcome(
  * whichever side currently has possession. `pauseOnPenalty` defers a
  * penalty's resolution instead of resolving it inline — see
  * MatchSimState.pendingPenalty and simulateMatch.ts's resumePendingPenalty.
+ * `pauseOnSubstitution` does the same for a stamina-driven substitution —
+ * see MatchSimState.pendingSubstitution.
  */
-export function resolvePhase(state: MatchSimState, minute: number, rng: Rng, pauseOnPenalty = false): SimMatchEvent[] {
+export function resolvePhase(
+  state: MatchSimState,
+  minute: number,
+  rng: Rng,
+  pauseOnPenalty = false,
+  pauseOnSubstitution = false,
+): SimMatchEvent[] {
   const events: SimMatchEvent[] = [];
   const attackingSide = state.possession;
   const defendingSide = oppositeSide(attackingSide);
@@ -249,15 +257,39 @@ export function resolvePhase(state: MatchSimState, minute: number, rng: Rng, pau
   state.possessionMinutes[attackingSide] += 1;
 
   for (const side of ["home", "away"] as const) {
-    const sub = maybeSubstituteTired(state[side], minute);
-    if (sub) {
-      events.push({
-        minute,
-        type: "SUBSTITUTION",
-        side,
-        playerId: sub.inPlayerId,
-        metadata: { outPlayerId: sub.outPlayerId, reason: "stamina" },
-      });
+    if (pauseOnSubstitution) {
+      // The mutual-exclusivity guard (skip looking for a tired player on a
+      // minute that already has a pending penalty) only makes sense for
+      // the INTERACTIVE branch — the auto branch below never sets any
+      // pending state, so it has never needed to yield to pendingPenalty
+      // and must keep running exactly like it did before this feature
+      // existed, for every caller that doesn't opt into pauseOnSubstitution.
+      if (state.pendingPenalty) continue;
+      const tiredId = findTiredPlayer(state[side], minute);
+      if (tiredId) {
+        // Resolution deferred — see PendingSubstitution's doc comment and
+        // simulateMatch.ts's resumePendingSubstitution. The other side's
+        // tired check (if any) is left for the next minute's fresh
+        // evaluation, mirroring applyOutcome's penalty-deferral break.
+        state.pendingSubstitution = {
+          minute,
+          side,
+          outgoing: getPlayer(state[side], tiredId),
+          benchOptions: state[side].bench.map((id) => getPlayer(state[side], id)),
+        };
+        break;
+      }
+    } else {
+      const sub = maybeSubstituteTired(state[side], minute);
+      if (sub) {
+        events.push({
+          minute,
+          type: "SUBSTITUTION",
+          side,
+          playerId: sub.inPlayerId,
+          metadata: { outPlayerId: sub.outPlayerId, reason: "stamina" },
+        });
+      }
     }
   }
 

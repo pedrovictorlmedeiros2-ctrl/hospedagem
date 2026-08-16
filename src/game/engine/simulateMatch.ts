@@ -15,6 +15,7 @@ import { initMatchState } from "./init.js";
 import { resolvePenalty } from "./resolveAction.js";
 import { resolvePhase } from "./resolvePhase.js";
 import { applyHalftimeRecovery } from "./stamina.js";
+import { applySubstitutionWithReplacement, pickReplacement } from "./substitution.js";
 
 const REGULATION_MINUTES = 90;
 const HALFTIME_MINUTE = 45;
@@ -96,14 +97,17 @@ export interface MatchHandle {
   nextMinute: number;
   /** Carried from the originating MatchOptions across every pause/resume — see MatchOptions.pauseOnPenalty. */
   pauseOnPenalty: boolean;
+  /** Carried from the originating MatchOptions across every pause/resume — see MatchOptions.pauseOnSubstitution. */
+  pauseOnSubstitution: boolean;
 }
 
 /**
  * The shared per-minute loop for every MatchHandle-returning phase —
  * stops EARLY, before `toMinute`, the instant `resolvePhase` defers a
- * penalty (`state.pendingPenalty` gets set — see PendingPenalty). Returns
- * the minute the loop should resume from next time, whether that's
- * because it ran clean to `toMinute` or paused partway through.
+ * penalty or a substitution (`state.pendingPenalty`/`state.pendingSubstitution`
+ * gets set — see PendingPenalty/PendingSubstitution). Returns the minute
+ * the loop should resume from next time, whether that's because it ran
+ * clean to `toMinute` or paused partway through.
  */
 function runMinutesUntil(
   state: MatchSimState,
@@ -112,10 +116,11 @@ function runMinutesUntil(
   fromMinute: number,
   toMinute: number,
   pauseOnPenalty: boolean,
+  pauseOnSubstitution: boolean,
 ): number {
   for (let minute = fromMinute; minute <= toMinute; minute++) {
-    events.push(...resolvePhase(state, minute, rng, pauseOnPenalty));
-    if (state.pendingPenalty) return minute + 1;
+    events.push(...resolvePhase(state, minute, rng, pauseOnPenalty, pauseOnSubstitution));
+    if (state.pendingPenalty || state.pendingSubstitution) return minute + 1;
   }
   return toMinute + 1;
 }
@@ -130,38 +135,56 @@ function runFirstHalf(home: MatchSquad, away: MatchSquad, options: MatchOptions)
     { minute: 0, type: "KICKOFF", side: state.possession, playerId: null },
   ];
   const pauseOnPenalty = options.pauseOnPenalty ?? false;
+  const pauseOnSubstitution = options.pauseOnSubstitution ?? false;
 
-  const nextMinute = runMinutesUntil(state, rng, events, 1, HALFTIME_MINUTE, pauseOnPenalty);
-  if (state.pendingPenalty) {
-    return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty };
+  const nextMinute = runMinutesUntil(
+    state,
+    rng,
+    events,
+    1,
+    HALFTIME_MINUTE,
+    pauseOnPenalty,
+    pauseOnSubstitution,
+  );
+  if (state.pendingPenalty || state.pendingSubstitution) {
+    return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty, pauseOnSubstitution };
   }
 
   events.push({ minute: HALFTIME_MINUTE, type: "HALFTIME", side: null, playerId: null });
   applyHalftimeRecovery(state.home);
   applyHalftimeRecovery(state.away);
 
-  return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty };
+  return { state, rng, events, seed: options.seed, nextMinute, pauseOnPenalty, pauseOnSubstitution };
 }
 
 function runUntilMinute(handle: MatchHandle, uptoMinute: number): MatchHandle {
-  const { state, rng, events, seed, pauseOnPenalty } = handle;
-  const nextMinute = runMinutesUntil(state, rng, events, handle.nextMinute, uptoMinute, pauseOnPenalty);
-  return { state, rng, events, seed, nextMinute, pauseOnPenalty };
+  const { state, rng, events, seed, pauseOnPenalty, pauseOnSubstitution } = handle;
+  const nextMinute = runMinutesUntil(
+    state,
+    rng,
+    events,
+    handle.nextMinute,
+    uptoMinute,
+    pauseOnPenalty,
+    pauseOnSubstitution,
+  );
+  return { state, rng, events, seed, nextMinute, pauseOnPenalty, pauseOnSubstitution };
 }
 
 /**
  * Resumes a `MatchHandle` that paused mid-first-half for a pending
- * penalty (see resumePendingPenalty), continuing toward minute 45 and
- * finishing halftime bookkeeping (HALFTIME event + stamina recovery) once
- * truly reached. Safe to call when there's nothing to resume (already
- * past halftime) — returns the handle unchanged. A second (or third...)
- * penalty before 45 just means calling this again after resolving it.
+ * penalty or substitution (see resumePendingPenalty/resumePendingSubstitution),
+ * continuing toward minute 45 and finishing halftime bookkeeping (HALFTIME
+ * event + stamina recovery) once truly reached. Safe to call when there's
+ * nothing to resume (already past halftime) — returns the handle
+ * unchanged. A second (or third...) pending decision before 45 just means
+ * calling this again after resolving it.
  */
 export function resumeFirstHalf(handle: MatchHandle): MatchHandle {
   if (handle.nextMinute > HALFTIME_MINUTE) return handle;
 
   const resumed = runUntilMinute(handle, HALFTIME_MINUTE);
-  if (resumed.state.pendingPenalty) return resumed;
+  if (resumed.state.pendingPenalty || resumed.state.pendingSubstitution) return resumed;
 
   resumed.events.push({ minute: HALFTIME_MINUTE, type: "HALFTIME", side: null, playerId: null });
   applyHalftimeRecovery(resumed.state.home);
@@ -210,19 +233,59 @@ export function resumePendingPenalty(handle: MatchHandle, choice?: PenaltyChoice
   return handle;
 }
 
+/**
+ * Resolves a handle's pending substitution (a no-op if none is pending)
+ * and clears it — `replacementId` is the real player's interactive
+ * choice; when omitted, or when it doesn't name a player actually on the
+ * bench right now (stale/invalid choice, e.g. a timeout), it falls back
+ * to `pickReplacement`'s automatic pick, same as the non-interactive
+ * path. The handle itself doesn't advance past the substitution's own
+ * minute — call `resumeFirstHalf` or `simulateUntilMinute` afterward to
+ * keep going.
+ */
+export function resumePendingSubstitution(handle: MatchHandle, replacementId?: string): MatchHandle {
+  const { state, events } = handle;
+  const pending = state.pendingSubstitution;
+  if (!pending) return handle;
+
+  const { minute, side, outgoing } = pending;
+  const team = state[side];
+
+  const chosenId =
+    replacementId && team.bench.includes(replacementId) ? replacementId : pickReplacement(team, outgoing.id);
+
+  delete state.pendingSubstitution;
+
+  if (!chosenId) return handle;
+
+  const result = applySubstitutionWithReplacement(team, outgoing.id, chosenId);
+  if (result) {
+    events.push({
+      minute,
+      type: "SUBSTITUTION",
+      side,
+      playerId: result.inPlayerId,
+      metadata: { outPlayerId: result.outPlayerId, reason: "stamina" },
+    });
+  }
+
+  return handle;
+}
+
 function runSecondHalf(handle: MatchHandle): MatchResult {
   const { state, rng, events, seed } = handle;
   const home = state.home.squad;
   const away = state.away.squad;
 
-  // Never pauses, regardless of handle.pauseOnPenalty: a penalty in the
-  // final stretch (71'+) always resolves inline, same as before this
-  // feature existed. Making the last ~20 minutes (plus stoppage, whose
-  // very length depends on the full event list) resumable too would mean
-  // MatchResult itself — not just MatchHandle — needs a "paused" variant,
-  // a much bigger change for a rare, late-match edge case. See ADR 0001,
-  // adenda "Pênalti interativo".
-  runMinutesUntil(state, rng, events, handle.nextMinute, REGULATION_MINUTES, false);
+  // Never pauses, regardless of handle.pauseOnPenalty/pauseOnSubstitution:
+  // a penalty or stamina substitution in the final stretch (71'+) always
+  // resolves inline, same as before either feature existed. Making the
+  // last ~20 minutes (plus stoppage, whose very length depends on the
+  // full event list) resumable too would mean MatchResult itself — not
+  // just MatchHandle — needs a "paused" variant, a much bigger change for
+  // a rare, late-match edge case. See ADR 0001, adendas "Pênalti
+  // interativo" and "Substituição interativa".
+  runMinutesUntil(state, rng, events, handle.nextMinute, REGULATION_MINUTES, false, false);
 
   const stoppage = Math.min(
     MAX_STOPPAGE_MINUTES,

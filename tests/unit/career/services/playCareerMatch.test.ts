@@ -619,4 +619,51 @@ describe("playCareerMatch", () => {
     );
   });
 
+  it("interactive substitution: omitting resolveSubstitutionDecision plays byte-identical to the pre-hook baseline", async () => {
+    // Unlike the penalty hook above, there's no seed-search here: the
+    // stamina drain-rate constants (game/engine/stamina.ts) never bring
+    // any player below TIRED_THRESHOLD by minute 90 under realistic play
+    // (confirmed empirically at the engine level — see
+    // tests/unit/game/engine/simulateMatch.test.ts's "interactive
+    // substitution pause" describe block, which forces stamina directly
+    // on the exposed MatchHandle.state to prove resumePendingSubstitution
+    // itself works correctly). So the only thing provable at THIS layer
+    // without introducing a mocking pattern this codebase doesn't
+    // otherwise use is that adding the (currently unreachable) hook
+    // didn't change anything for callers that don't provide it — the
+    // same "byte-identical when omitted" guarantee every other optional
+    // hook in this file gives.
+    const seed = "service-penalty-search-17";
+    const now = new Date("2026-08-14T00:00:00Z");
+
+    const withoutHook = makeDeps();
+    await createPlayerProfile(withoutHook, profileInput());
+    const baseline = await playCareerMatch(withoutHook, { discordId: "discord-1", now, seed });
+
+    const withUncalledHook = makeDeps();
+    await createPlayerProfile(withUncalledHook, profileInput());
+    let callCount = 0;
+    const withHook = await playCareerMatch(
+      {
+        ...withUncalledHook,
+        resolveSubstitutionDecision: async (context) => {
+          callCount += 1;
+          return context.benchOptions[0]?.id ?? "";
+        },
+      },
+      { discordId: "discord-1", now, seed },
+    );
+
+    // Not a full `.result` deep-equal: team/player ids come from
+    // InMemoryCareerRepository's own randomUUID() calls, instance-specific
+    // and unrelated to the shared match seed (same reasoning as the
+    // halftime hook's no-op test above). Score and the event type/minute
+    // sequence are what the seed actually pins down deterministically.
+    expect(callCount).toBe(0);
+    expect(withHook.result.homeScore).toBe(baseline.result.homeScore);
+    expect(withHook.result.awayScore).toBe(baseline.result.awayScore);
+    expect(withHook.result.events.map((e) => `${e.minute}:${e.type}`)).toEqual(
+      baseline.result.events.map((e) => `${e.minute}:${e.type}`),
+    );
+  });
 });

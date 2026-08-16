@@ -119,4 +119,11 @@ export interface MatchOptions {
    * resolves penalties inline regardless (see its doc comment for why).
    */
   pauseOnPenalty?: boolean;
+  /**
+   * Same idea as `pauseOnPenalty`, for a stamina-driven substitution
+   * instead — see MatchSimState.pendingSubstitution and
+   * resumePendingSubstitution. Also only honored by
+   * simulateFirstHalf/simulateUntilMinute, never simulateSecondHalf.
+   */
+  pauseOnSubstitution?: boolean;
 }

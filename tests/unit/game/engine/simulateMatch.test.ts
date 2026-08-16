@@ -3,13 +3,17 @@ import { generateSquad } from "../../../../src/game/domain/generateSquad.js";
 import { createRng } from "../../../../src/game/domain/rng.js";
 import type { MatchSquad, SimMatchEventType } from "../../../../src/game/domain/types.js";
 import { InvalidSquadError } from "../../../../src/game/domain/validateSquad.js";
+import { initMatchState } from "../../../../src/game/engine/init.js";
+import { resolvePhase } from "../../../../src/game/engine/resolvePhase.js";
 import {
   resumeFirstHalf,
   resumePendingPenalty,
+  resumePendingSubstitution,
   simulateFirstHalf,
   simulateMatch,
   simulateSecondHalf,
   simulateUntilMinute,
+  type MatchHandle,
 } from "../../../../src/game/engine/simulateMatch.js";
 
 function squad(teamId: string, teamName: string, avgOverall: number, seed: string): MatchSquad {
@@ -380,5 +384,183 @@ describe("interactive penalty pause — pauseOnPenalty", () => {
 
     const result = simulateMatch(home, away, { seed: HOME_PENALTY_SEED });
     expect(result.events.some((e) => e.type === "PENALTY_SCORED" || e.type === "PENALTY_MISSED")).toBe(true);
+  });
+});
+
+describe("interactive substitution pause — pauseOnSubstitution", () => {
+  // Unlike the penalty feature, this pause point can't be reached by
+  // brute-forcing a seed: the drain-rate constants (stamina.ts) never
+  // bring any player below TIRED_THRESHOLD (35) by minute 70 under
+  // realistic squad conditions — confirmed empirically by simulating
+  // 2000 seeds (including AGGRESSIVE-vs-AGGRESSIVE, which presses more)
+  // with zero pauses ever produced, and by checking minimum end-of-match
+  // stamina across 500 full simulateMatch runs (63.3, still far above
+  // 35). See the code-review addendum in RISK_REGISTER.md — the stamina
+  // substitution mechanic (this feature's whole reason to pause) is
+  // effectively unreachable in real play, a pre-existing condition this
+  // feature inherits rather than introduces. Tests instead directly set
+  // a player's stamina on the exposed MatchHandle.state, which
+  // MatchHandle's own doc comment establishes as an intentional,
+  // documented mutation point for interactive-match testing/control —
+  // the same mechanism real (very long) gameplay would eventually reach
+  // this through, just accelerated.
+  function forceStamina(handle: MatchHandle, side: "home" | "away", onPitchIndex: number, stamina: number): string {
+    const playerId = handle.state[side].onPitch[onPitchIndex]!;
+    handle.state[side].stats.get(playerId)!.stamina = stamina;
+    return playerId;
+  }
+
+  it("does nothing differently when pauseOnSubstitution is omitted — same result as the non-interactive path", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const withoutOption = simulateMatch(home, away, { seed: "structure-seed" });
+    const explicitlyOff = simulateSecondHalf(
+      simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: false }),
+    );
+
+    expect(explicitlyOff).toEqual(withoutOption);
+  });
+
+  it("pauses in the 46-70 window exactly when a tired player is found, capturing the outgoing player and bench options", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    let handle = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    expect(handle.state.pendingSubstitution).toBeUndefined();
+
+    const tiredId = forceStamina(handle, "home", 1, 20);
+    handle = simulateUntilMinute(handle, 70);
+
+    const pending = handle.state.pendingSubstitution;
+    expect(pending).toBeDefined();
+    expect(pending?.side).toBe("home");
+    expect(pending?.outgoing.id).toBe(tiredId);
+    expect(pending?.minute).toBeGreaterThanOrEqual(55);
+    expect(pending?.minute).toBeLessThanOrEqual(70);
+    expect(pending?.benchOptions.length).toBe(6);
+    // Nothing past the substitution's own minute happened yet — no
+    // SUBSTITUTION event recorded, no later-minute events either.
+    expect(handle.events.every((e) => e.minute <= pending!.minute)).toBe(true);
+    expect(handle.events.some((e) => e.type === "SUBSTITUTION")).toBe(false);
+  });
+
+  it("resumePendingSubstitution is a safe no-op when there's nothing pending", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const clean = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    expect(resumePendingSubstitution(clean)).toBe(clean); // same object, untouched
+  });
+
+  it("resumePendingSubstitution with an explicit valid bench id performs that exact swap, even when it's not the automatic pick", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    let handle = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    const tiredId = forceStamina(handle, "home", 1, 20);
+    handle = simulateUntilMinute(handle, 70);
+
+    const pending = handle.state.pendingSubstitution!;
+    // Deliberately the 3rd bench option, not whichever pickReplacement
+    // would auto-pick — proves the interactive choice is actually honored.
+    const chosenId = pending.benchOptions[2]!.id;
+    handle = resumePendingSubstitution(handle, chosenId);
+
+    expect(handle.state.pendingSubstitution).toBeUndefined();
+    expect(handle.state.home.onPitch).toContain(chosenId);
+    expect(handle.state.home.onPitch).not.toContain(tiredId);
+    expect(handle.state.home.bench).not.toContain(chosenId);
+
+    const subEvent = handle.events.find((e) => e.type === "SUBSTITUTION");
+    expect(subEvent?.minute).toBe(pending.minute);
+    expect(subEvent?.side).toBe("home");
+    expect(subEvent?.playerId).toBe(chosenId);
+    expect(subEvent?.metadata).toEqual({ outPlayerId: tiredId, reason: "stamina" });
+  });
+
+  it("resumePendingSubstitution falls back to the automatic pick — omitted and an invalid id behave identically", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    let omittedHandle = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    forceStamina(omittedHandle, "home", 1, 20);
+    omittedHandle = simulateUntilMinute(omittedHandle, 70);
+    omittedHandle = resumePendingSubstitution(omittedHandle);
+    const autoChosenId = omittedHandle.events.find((e) => e.type === "SUBSTITUTION")?.playerId;
+    expect(autoChosenId).toBeDefined();
+
+    let invalidHandle = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    forceStamina(invalidHandle, "home", 1, 20);
+    invalidHandle = simulateUntilMinute(invalidHandle, 70);
+    invalidHandle = resumePendingSubstitution(invalidHandle, "not-a-real-player-id");
+    const invalidChosenId = invalidHandle.events.find((e) => e.type === "SUBSTITUTION")?.playerId;
+
+    expect(invalidChosenId).toBe(autoChosenId);
+  });
+
+  it("an opponent's pending substitution resolves the same with or without a choice — only the PLAYER's own decision should ever be asked for", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    let handle = simulateFirstHalf(home, away, { seed: "structure-seed", pauseOnSubstitution: true });
+    forceStamina(handle, "away", 1, 20);
+    handle = simulateUntilMinute(handle, 70);
+    expect(handle.state.pendingSubstitution?.side).toBe("away");
+
+    // The Discord layer never calls resolveSubstitutionDecision for the
+    // opponent's substitution — simulating that by resolving with no
+    // choice, exactly like resumePendingSubstitution's non-interactive default.
+    const resolved = resumePendingSubstitution(handle, undefined);
+    expect(resolved.state.pendingSubstitution).toBeUndefined();
+  });
+
+  it("the auto (non-interactive) path still performs the swap for real, just without ever pausing — pauseOnSubstitution only changes WHEN it resolves, not WHETHER", () => {
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+
+    const handle = simulateFirstHalf(home, away, { seed: "structure-seed" });
+    const tiredId = forceStamina(handle, "home", 1, 20);
+    const result = simulateSecondHalf(handle);
+
+    expect(
+      result.events.some(
+        (e) => e.type === "SUBSTITUTION" && e.side === "home" && (e.metadata as Record<string, unknown>)?.outPlayerId === tiredId,
+      ),
+    ).toBe(true);
+  });
+
+  it("regression: a pending penalty only gates the INTERACTIVE substitution check, never the auto one", () => {
+    // The mutual-exclusivity guard ("don't look for a tired player on a
+    // minute that already deferred a penalty") only makes sense for
+    // pauseOnSubstitution: true — the auto branch never sets any pending
+    // state, so it has nothing to avoid clobbering and must keep running
+    // exactly like it did before pendingSubstitution existed, for every
+    // caller that hasn't opted into the substitution hook (e.g. a match
+    // using ONLY resolvePenaltyDecision, which is every existing penalty
+    // caller/test). resolvePhase.ts used to wrap both branches in the
+    // same guard by mistake — caught here, not by any seed search, since
+    // reproducing "a penalty AND a tired player in the exact same real
+    // minute" naturally would require stacking two independently-rare
+    // conditions on top of each other.
+    const home = squad("home", "Casa", 65, "home-seed");
+    const away = squad("away", "Visitante", 65, "away-seed");
+    const rng = createRng("resolvephase-guard-regression-seed");
+    const state = initMatchState(home, away, rng);
+
+    state.pendingPenalty = {
+      minute: 60,
+      attackingSide: "away",
+      taker: away.players[9]!,
+      gk: home.players[0]!,
+    };
+    const tiredId = state.home.onPitch[1]!;
+    state.home.stats.get(tiredId)!.stamina = 20;
+
+    const events = resolvePhase(state, 60, rng, false, false);
+
+    expect(
+      events.some((e) => e.type === "SUBSTITUTION" && (e.metadata as Record<string, unknown>)?.outPlayerId === tiredId),
+    ).toBe(true);
   });
 });
