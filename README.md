@@ -43,7 +43,7 @@ decisões de arquitetura.
 | `/propostas` | Lista propostas de transferência de outros clubes da sua liga |
 | `/transferir` | Aceita uma proposta de transferência e assina com o novo clube |
 | `/pacotes` | Mostra os pacotes de cartas disponíveis para comprar |
-| `/abrir-pacote` | Compra e abre um pacote — sorteia cartas por raridade e as adiciona à coleção |
+| `/abrir-pacote` | Compra e abre um pacote — sorteia cartas por raridade e as adiciona à coleção, mostrando a imagem ilustrada de cada carta sorteada |
 | `/colecao` | Mostra sua coleção de cartas, agrupada com contagem |
 | `/duelo-desafiar` | Desafia outro usuário do Discord para um duelo 1x1 |
 | `/duelo-responder` | Aceita ou recusa um desafio recebido — se aceitar, o duelo é simulado na hora |
@@ -54,7 +54,7 @@ decisões de arquitetura.
 | `/noticias` | Mostra as últimas notícias do mundo do jogo (hoje: recordes mundiais quebrados) |
 | `/treinador` | Pede um conselho ao técnico sobre o andamento da temporada |
 | `/entrevista pergunta:...` | Faz uma pergunta de entrevista pro seu jogador responder, em primeira pessoa |
-| `/carta nome:...` | Mostra a visão detalhada de uma carta do catálogo (atributos, habilidade, cópias possuídas) |
+| `/carta nome:...` | Mostra a visão detalhada de uma carta do catálogo (imagem ilustrada, atributos, habilidade, cópias possuídas) |
 | `/favoritar nome:...` | Favorita ou desfavorita uma carta da sua coleção |
 | `/conquistas` | Mostra seu progresso de conquistas (desbloqueadas e bloqueadas) |
 | `/canal-eventos` | (admin do servidor) Define o canal atual para receber notificações de eventos do jogo, ex: recordes mundiais quebrados |
@@ -66,6 +66,7 @@ decisões de arquitetura.
 - discord.js v14 (Components V2)
 - PostgreSQL + Prisma
 - Groq SDK (camada narrativa, isolada do gameplay)
+- @napi-rs/canvas (geração das cartas ilustradas)
 - pino (logs estruturados) + zod (validação de env) + vitest (testes)
 
 ## Setup

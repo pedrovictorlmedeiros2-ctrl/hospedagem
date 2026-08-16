@@ -1,5 +1,7 @@
 import {
   ContainerBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   MessageFlags,
   SeparatorBuilder,
   SlashCommandBuilder,
@@ -9,6 +11,7 @@ import { PACKS } from "../../cards/domain/catalog.js";
 import { CARD_RARITY_EMOJI, CARD_RARITY_LABELS } from "../../cards/domain/labels.js";
 import { openPack } from "../../cards/services/openPack.js";
 import { achievementUnlockLines } from "../ui/achievementUnlockLines.js";
+import { buildCardAttachment } from "../ui/cardImage.js";
 import type { Command } from "./types.js";
 
 const packChoices = PACKS.map((pack) => ({ name: pack.name, value: pack.id }));
@@ -41,9 +44,20 @@ export const abrirPacoteCommand: Command = {
       return c.ability ? `${base}\n   ✨ ${c.ability}` : base;
     });
 
+    // One filename per drawn card, not per card id — the same card can be
+    // drawn more than once in a single pack, and attachment filenames must
+    // be unique within one message.
+    const attachments = result.cards.map((c, i) => buildCardAttachment(c, `card-${i}.png`));
+    const gallery = new MediaGalleryBuilder().addItems(
+      ...result.cards.map(
+        (c, i) => (item: MediaGalleryItemBuilder) => item.setURL(`attachment://card-${i}.png`).setDescription(c.name),
+      ),
+    );
+
     const card = new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🎴 ${result.packName} aberto!`))
+      .addMediaGalleryComponents(gallery)
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(cardLines.join("\n")))
       .addSeparatorComponents(new SeparatorBuilder())
@@ -56,7 +70,7 @@ export const abrirPacoteCommand: Command = {
       card.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(unlockLines.join("\n")));
     }
 
-    await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [card], files: attachments, flags: MessageFlags.IsComponentsV2 });
 
     ctx.logger.info(
       { discordId: interaction.user.id, packId, cards: result.cards.map((c) => c.id) },

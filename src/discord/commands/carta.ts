@@ -1,6 +1,14 @@
-import { ContainerBuilder, MessageFlags, SeparatorBuilder, SlashCommandBuilder, TextDisplayBuilder } from "discord.js";
+import {
+  ContainerBuilder,
+  MediaGalleryBuilder,
+  MessageFlags,
+  SeparatorBuilder,
+  SlashCommandBuilder,
+  TextDisplayBuilder,
+} from "discord.js";
 import { CARD_ATTRIBUTE_LABELS, CARD_RARITY_EMOJI, CARD_RARITY_LABELS } from "../../cards/domain/labels.js";
 import { viewCardDetail } from "../../cards/services/viewCardDetail.js";
+import { buildCardAttachment } from "../ui/cardImage.js";
 import type { Command } from "./types.js";
 
 export const cartaCommand: Command = {
@@ -32,14 +40,19 @@ export const cartaCommand: Command = {
         : "Você ainda não tem essa carta.",
     ].filter((line): line is string => line !== null);
 
+    const attachment = buildCardAttachment(card, "card.png");
+
     const container = new ContainerBuilder()
       .setAccentColor(0x1abc9c)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🎴 ${card.name}`))
+      .addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems((item) => item.setURL("attachment://card.png").setDescription(card.name)),
+      )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(summaryLines.join("\n")))
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(attributeLines.join("\n")));
 
-    await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [container], files: [attachment], flags: MessageFlags.IsComponentsV2 });
   },
 };

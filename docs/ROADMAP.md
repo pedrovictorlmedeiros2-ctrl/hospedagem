@@ -1550,3 +1550,59 @@ aconteça em partidas normais — decisão de balanceamento, não implementada
 sem pedido explícito (ver Risco #61); consertar o fallback de reserva
 pra nunca escalar um goleiro de linha (Risco #62); pênalti/substituição
 nos últimos 20 minutos/acréscimos continuam não-interativos.
+
+## Cartas ilustradas: carta gerada por código com moldura, silhueta e atributos
+
+Pedido: "quero que as cartas seja visível com foto pois é o desfecho do
+bot" — o sistema de cartas colecionáveis é um destaque do produto, mas
+até aqui só mostrava texto (nome, raridade em emoji, atributos em
+linhas). Como todo jogador do catálogo é fictício (sem foto real
+possível), perguntado ao usuário entre gerar uma carta ilustrada
+completa ou um ícone simples por posição/raridade — escolhida a carta
+ilustrada completa.
+
+- **Nova dependência: `@napi-rs/canvas`** (a primeira biblioteca de
+  geração de imagem do projeto) — escolhida por distribuir binário
+  pré-compilado por plataforma, testada de verdade neste ambiente antes
+  de decidir (instalar + renderizar + inspecionar visualmente um PNG de
+  exemplo), não só assumida como compatível.
+- **`discord/ui/cardImage.ts`** desenha a carta inteira em memória e
+  devolve um PNG: moldura com gradiente por raridade (cinza/azul/roxo/
+  dourado/arco-íris), OVR e posição no topo, um "slot de foto" circular
+  com silhueta desenhada por código (não uma imagem externa — sem foto
+  real disponível), nome com auto-ajuste de tamanho de fonte, grid de
+  atributos reaproveitando os rótulos curtos que o card de perfil já
+  usa (`player/domain/labels.ts`), e uma faixa de habilidade quando a
+  carta tem uma.
+- **Dois achados reais só visíveis inspecionando a imagem de verdade**
+  (não algo que typecheck/lint/teste de buffer detectaria sozinho):
+  emoji (`✨`) desenhado em canvas neste ambiente vira uma caixa vazia
+  ("tofu"), porque as fontes disponíveis não têm glifos de emoji
+  colorido — trocado por texto simples; e a faixa de habilidade
+  sobrepunha a última linha do grid de atributos — corrigido ajustando
+  o espaçamento. Ambos encontrados gerando PNGs de exemplo (um por
+  raridade) e olhando pra eles antes de escrever qualquer teste
+  permanente.
+- **`/carta` e `/abrir-pacote` ganharam a imagem — `/colecao` continua
+  texto.** Não por volume "grande demais": o catálogo tem exatamente 13
+  cartas fixas, e o Discord limita mensagens a 10 anexos — uma coleção
+  completa já estouraria esse limite com uma imagem por carta.
+- **Sem cache de imagem** — cada carta é gerada on-demand a cada
+  comando (~20-30ms por carta nesta máquina), aceitável pro volume de
+  uso atual; cachear as 13 imagens fixas do catálogo é a otimização
+  natural se o uso concorrente crescer.
+
+**O que foi validado de verdade:** 7 testes novos
+(`tests/unit/discord/ui/cardImage.test.ts`) — PNG válido pra cada
+raridade, atributos de goleiro corretos pra posição GK, não lança pra
+nome/habilidade longos nem atributos incompletos, cobre as 11 posições
+de linha, `buildCardAttachment` embrulha o buffer certo. Mais
+importante: 5 cartas de exemplo renderizadas via script throwaway e
+inspecionadas visualmente de verdade (uma por raridade, incluindo
+goleiro e nome longo) — foi assim que os dois achados acima apareceram,
+não por sorte. `npx tsc --noEmit`, `npx eslint .`, `npx vitest run`
+(430 passando) e `npm run build` — todos limpos.
+
+**O que fica pra depois:** cache das imagens do catálogo fixo se o uso
+concorrente justificar; `/colecao` continua sem imagem (limite de 10
+anexos por mensagem do Discord vs. 13 cartas no catálogo).
